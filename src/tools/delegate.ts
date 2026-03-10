@@ -625,14 +625,16 @@ export async function parallelDelegate(
       });
 
       const settled = await Promise.allSettled(promises);
-      for (const outcome of settled) {
+      for (let i = 0; i < settled.length; i++) {
+        const outcome = settled[i];
         const res = outcome.status === "fulfilled"
           ? outcome.value
           : {
-              id: "unknown", success: false, output: "",
+              id: layer[i]?.id ?? `unknown-${i}`, success: false, output: "",
               error: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
               model_used: "", service_used: "", estimated_tokens: 0,
-              complexity: "unknown", routing_reasoning: "",
+              complexity: assignmentMap.get(layer[i]?.id ?? "")?.complexity ?? "unknown",
+              routing_reasoning: "",
               used_fallback: false, duration_ms: 0,
             };
         results.set(res.id, res);
@@ -641,12 +643,13 @@ export async function parallelDelegate(
     }
   };
 
-  // Global timeout wrapper
+  // Global timeout wrapper (clear timer to avoid leak when layers finish first)
+  let globalTimer: ReturnType<typeof setTimeout>;
   await Promise.race([
     executeAllLayers(),
-    new Promise<void>((_, reject) =>
-      setTimeout(() => reject(new Error("Global timeout")), globalTimeoutMs)
-    ),
+    new Promise<void>((_, reject) => {
+      globalTimer = setTimeout(() => reject(new Error("Global timeout")), globalTimeoutMs);
+    }),
   ]).catch((err) => {
     for (const subtask of subtasks!) {
       if (!results.has(subtask.id)) {
@@ -660,6 +663,7 @@ export async function parallelDelegate(
       }
     }
   });
+  clearTimeout(globalTimer!);
 
   // Assemble results in original subtask order
   const orderedResults = subtasks.map((s) => results.get(s.id)!).filter(Boolean);

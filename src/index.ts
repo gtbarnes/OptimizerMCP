@@ -8,7 +8,7 @@ import { classifyTask } from "./tools/classify.js";
 import { routeTask } from "./tools/route.js";
 import { checkQuota } from "./tools/quota.js";
 import { delegateTask, parallelDelegate } from "./tools/delegate.js";
-import { optimizeContext, getProjectSummary } from "./tools/optimize.js";
+import { optimizeContext, getProjectSummary, invalidateToolsCache } from "./tools/optimize.js";
 import { getQuotaStatus, recordUsage } from "./tracking/usage-store.js";
 import { invalidateRegistryCache } from "./config/models.js";
 import { detectAvailableTools } from "./utils/subprocess.js";
@@ -395,6 +395,8 @@ server.registerTool(
     inputSchema: {},
   },
   async () => {
+    // Invalidate the optimize pipeline's tool cache so it picks up changes
+    invalidateToolsCache();
     const tools = await detectAvailableTools();
 
     const lines: string[] = ["Available Tools:"];

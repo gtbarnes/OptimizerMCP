@@ -18,6 +18,11 @@ async function getTools() {
   return _cachedTools;
 }
 
+/** Invalidate the tool detection cache (call when tools may have changed). */
+export function invalidateToolsCache(): void {
+  _cachedTools = null;
+}
+
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
@@ -249,7 +254,7 @@ export async function getProjectSummary(cwd: string): Promise<string> {
       timeoutMs: 5_000,
     });
     if (result.exitCode === 0) {
-      const files = result.stdout.trim().split("\n").slice(0, 50);
+      const files = result.stdout.trim().split("\n").sort().slice(0, 50);
       parts.push(`\n--- File Structure (${files.length} files shown) ---`);
       parts.push(files.join("\n"));
     }
