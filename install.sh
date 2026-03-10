@@ -3,6 +3,9 @@ set -euo pipefail
 
 # OptimizerMCP Installer
 # Installs the MCP server and configures Codex to use it.
+#
+# Usage (from anywhere):
+#   git clone https://github.com/gtbarnes/OptimizerMCP.git ~/OptimizerMCP && ~/OptimizerMCP/install.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEX_CONFIG_DIR="$HOME/.codex"
@@ -12,20 +15,31 @@ echo "=== OptimizerMCP Installer ==="
 echo "Project dir: $SCRIPT_DIR"
 echo ""
 
-# 1. Check prerequisites
+# 1. Check prerequisites — find node even if not on PATH
 echo "[1/5] Checking prerequisites..."
 
-if ! command -v node &>/dev/null; then
+NODE_BIN=""
+if command -v node &>/dev/null; then
+  NODE_BIN="$(command -v node)"
+elif [ -x /opt/homebrew/bin/node ]; then
+  NODE_BIN="/opt/homebrew/bin/node"
+elif [ -x /usr/local/bin/node ]; then
+  NODE_BIN="/usr/local/bin/node"
+else
   echo "ERROR: Node.js not found. Install it first: https://nodejs.org"
   exit 1
 fi
 
-NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
+# Make sure npm is also available for the rest of the script
+NODE_DIR="$(dirname "$NODE_BIN")"
+export PATH="$NODE_DIR:$PATH"
+
+NODE_VERSION=$("$NODE_BIN" -v | sed 's/v//' | cut -d. -f1)
 if [ "$NODE_VERSION" -lt 18 ]; then
-  echo "ERROR: Node.js 18+ required (found v$(node -v))"
+  echo "ERROR: Node.js 18+ required (found $("$NODE_BIN" -v))"
   exit 1
 fi
-echo "  Node.js: $(node -v) ✓"
+echo "  Node.js: $("$NODE_BIN" -v) at $NODE_BIN ✓"
 
 if ! command -v codex &>/dev/null; then
   echo "  WARNING: Codex CLI not found — install it to use delegation features"
@@ -56,27 +70,30 @@ echo ""
 echo "[4/5] Configuring Codex..."
 mkdir -p "$CODEX_CONFIG_DIR"
 
-# Check if optimizer is already configured
+# Remove any old optimizer config (in case path changed)
 if grep -q 'mcp_servers.optimizer' "$CODEX_CONFIG" 2>/dev/null; then
-  echo "  Codex config already has optimizer entry — skipping"
-else
-  # Append MCP server config
-  cat >> "$CODEX_CONFIG" <<EOF
+  # Remove the old block so we can write the updated one
+  sed -i.bak '/^\[mcp_servers\.optimizer\]/,/^$/d' "$CODEX_CONFIG"
+  echo "  Replaced existing optimizer config"
+fi
+
+# Write config using the absolute path to the node binary we found
+cat >> "$CODEX_CONFIG" <<EOF
 
 [mcp_servers.optimizer]
-command = "node"
+command = "$NODE_BIN"
 args = ["$SCRIPT_DIR/build/index.js"]
 required = true
 startup_timeout_sec = 15
 EOF
-  echo "  Added [mcp_servers.optimizer] to $CODEX_CONFIG ✓"
-fi
+echo "  Added [mcp_servers.optimizer] to $CODEX_CONFIG ✓"
+echo "    command = $NODE_BIN"
+echo "    args = $SCRIPT_DIR/build/index.js"
 
 # 5. Install AGENTS.md
 echo ""
 echo "[5/5] Installing AGENTS.md..."
 if [ -f "$CODEX_CONFIG_DIR/AGENTS.md" ]; then
-  # Check if it already contains optimizer instructions
   if grep -q 'classify_task' "$CODEX_CONFIG_DIR/AGENTS.md" 2>/dev/null; then
     echo "  AGENTS.md already contains optimizer instructions — skipping"
   else
@@ -95,6 +112,8 @@ echo ""
 echo "=== Installation complete ==="
 echo ""
 echo "The optimizer will load automatically next time you start Codex."
+echo ""
+echo "To update later:  cd $SCRIPT_DIR && ./update.sh"
 echo ""
 echo "Optional environment variables:"
 echo "  ZAI_API_KEY=<key>    — Enable direct Z.AI API delegation"
