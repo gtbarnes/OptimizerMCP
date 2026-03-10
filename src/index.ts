@@ -208,13 +208,14 @@ server.registerTool(
       fallbackService: fallback_service,
     });
 
+    const header = `[Delegated to ${result.model_used}@${result.service_used} | ~${result.estimated_tokens} tokens]`;
     return {
       content: [
         {
           type: "text" as const,
           text: result.success
-            ? result.output
-            : `ERROR: ${result.error}\n\nPartial output:\n${result.output}`,
+            ? `${header}\n\n${result.output}`
+            : `${header}\nERROR: ${result.error}\n\nPartial output:\n${result.output}`,
         },
       ],
     };

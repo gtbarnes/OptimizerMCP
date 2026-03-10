@@ -94,10 +94,12 @@ async function delegateToClaude(
   cwd: string,
   timeoutMs: number
 ): Promise<DelegationResult> {
+  console.error(`[OptimizerMCP] Delegating to Claude: ${model}`);
   const args = ["-p", "--output-format", "text", "--model", model, prompt];
   const result = await runCommand("claude", args, { cwd, timeoutMs });
 
   if (result.exitCode !== 0) {
+    console.error(`[OptimizerMCP] Claude delegation failed (exit ${result.exitCode})`);
     return {
       success: false,
       output: "",
@@ -108,6 +110,7 @@ async function delegateToClaude(
     };
   }
 
+  console.error(`[OptimizerMCP] Claude delegation succeeded (${result.stdout.length} chars)`);
   return {
     success: true,
     output: result.stdout.trim(),
@@ -123,6 +126,7 @@ async function delegateToCodex(
   cwd: string,
   timeoutMs: number
 ): Promise<DelegationResult> {
+  console.error(`[OptimizerMCP] Delegating to Codex: ${model}`);
   const args = ["exec", "--model", model, "--full-auto", prompt];
   const result = await runCommand("codex", args, { cwd, timeoutMs });
 
@@ -182,8 +186,11 @@ async function delegateToZaiViaOpenCode(
   cwd: string,
   timeoutMs: number
 ): Promise<DelegationResult> {
-  // OpenCode uses "zai/<model>" format for Z.AI models
-  const qualifiedModel = model.startsWith("zai/") ? model : `zai/${model}`;
+  // OpenCode provider: use "zhipuai-coding-plan/<model>" (the Zhipu AI Coding Plan)
+  // Strip any existing provider prefix before adding the correct one
+  const bareModel = model.replace(/^(zai|zhipuai-coding-plan)\//, "");
+  const qualifiedModel = `zhipuai-coding-plan/${bareModel}`;
+  console.error(`[OptimizerMCP] Delegating to Z.AI via OpenCode: ${qualifiedModel}`);
   const args = ["run", "-m", qualifiedModel, prompt];
   const result = await runCommand("opencode", args, { cwd, timeoutMs });
 
@@ -464,10 +471,12 @@ export async function parallelDelegate(
 
   // Auto-split mode: use Ollama to decompose a single task
   if (input.task && input.autoSplit !== false && (!subtasks || subtasks.length === 0)) {
+    console.error(`[OptimizerMCP] Auto-splitting task via Ollama...`);
     const split = await autoSplitTask(input.task);
     if (split) {
       subtasks = split;
       autoSplitUsed = true;
+      console.error(`[OptimizerMCP] Split into ${split.length} subtasks: ${split.map(s => s.id).join(", ")}`);
     } else {
       return {
         overall_success: false,
@@ -583,6 +592,7 @@ export async function parallelDelegate(
 
         const assignment = assignmentMap.get(subtask.id)!;
         const startTime = Date.now();
+        console.error(`[OptimizerMCP] ▶ Subtask '${subtask.id}' → ${assignment.model}@${assignment.service}`);
 
         const delegationResult = await delegateTask(
           subtask.prompt,
@@ -594,6 +604,10 @@ export async function parallelDelegate(
             fallbackService: assignment.fallbackService,
           }
         );
+
+        const durationMs = Date.now() - startTime;
+        const status = delegationResult.success ? "✓" : "✗";
+        console.error(`[OptimizerMCP] ${status} Subtask '${subtask.id}' completed in ${(durationMs / 1000).toFixed(1)}s (${delegationResult.model_used}@${delegationResult.service_used})`);
 
         return {
           id: subtask.id,
@@ -607,7 +621,7 @@ export async function parallelDelegate(
           routing_reasoning: assignment.reasoning,
           used_fallback: delegationResult.service_used !== assignment.service ||
             delegationResult.model_used !== assignment.model,
-          duration_ms: Date.now() - startTime,
+          duration_ms: durationMs,
         };
       });
 
