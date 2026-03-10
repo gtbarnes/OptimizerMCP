@@ -4,7 +4,12 @@
       "id": "gpt-5.4",
       "service": "codex",
       "tier": "flagship",
-      "capabilities": ["coding", "reasoning", "computer-use", "multi-file"],
+      "capabilities": [
+        "coding",
+        "reasoning",
+        "computer-use",
+        "multi-file"
+      ],
       "cost_weight": 10,
       "context_window": 200000
     },
@@ -12,7 +17,11 @@
       "id": "gpt-5.3-codex",
       "service": "codex",
       "tier": "high",
-      "capabilities": ["coding", "reasoning", "multi-file"],
+      "capabilities": [
+        "coding",
+        "reasoning",
+        "multi-file"
+      ],
       "cost_weight": 8,
       "context_window": 200000
     },
@@ -20,7 +29,10 @@
       "id": "codex-mini",
       "service": "codex",
       "tier": "budget",
-      "capabilities": ["coding", "simple-tasks"],
+      "capabilities": [
+        "coding",
+        "simple-tasks"
+      ],
       "cost_weight": 1,
       "context_window": 128000
     },
@@ -28,7 +40,14 @@
       "id": "claude-opus-4-6",
       "service": "claude",
       "tier": "flagship",
-      "capabilities": ["coding", "reasoning", "analysis", "multi-file", "architectural", "computer-use"],
+      "capabilities": [
+        "coding",
+        "reasoning",
+        "analysis",
+        "multi-file",
+        "architectural",
+        "computer-use"
+      ],
       "cost_weight": 10,
       "context_window": 200000
     },
@@ -36,7 +55,12 @@
       "id": "claude-sonnet-4-6",
       "service": "claude",
       "tier": "mid",
-      "capabilities": ["coding", "reasoning", "multi-file", "computer-use"],
+      "capabilities": [
+        "coding",
+        "reasoning",
+        "multi-file",
+        "computer-use"
+      ],
       "cost_weight": 5,
       "context_window": 200000
     },
@@ -44,7 +68,10 @@
       "id": "claude-haiku-4-5",
       "service": "claude",
       "tier": "budget",
-      "capabilities": ["coding", "simple-tasks"],
+      "capabilities": [
+        "coding",
+        "simple-tasks"
+      ],
       "cost_weight": 1,
       "context_window": 200000
     },
@@ -52,7 +79,11 @@
       "id": "glm-5",
       "service": "zai",
       "tier": "flagship",
-      "capabilities": ["coding", "reasoning", "multi-file"],
+      "capabilities": [
+        "coding",
+        "reasoning",
+        "multi-file"
+      ],
       "cost_weight": 3,
       "context_window": 128000,
       "notes": "Z.AI premium model. 3x quota consumption during peak hours."
@@ -61,7 +92,11 @@
       "id": "glm-4.7",
       "service": "zai",
       "tier": "mid",
-      "capabilities": ["coding", "reasoning", "multi-file"],
+      "capabilities": [
+        "coding",
+        "reasoning",
+        "multi-file"
+      ],
       "cost_weight": 1,
       "context_window": 200000,
       "notes": "Z.AI workhorse model. SWE-bench 73.8%, HumanEval 85.2%."
@@ -70,7 +105,10 @@
       "id": "glm-4.5-air",
       "service": "zai",
       "tier": "budget",
-      "capabilities": ["coding", "simple-tasks"],
+      "capabilities": [
+        "coding",
+        "simple-tasks"
+      ],
       "cost_weight": 0.5,
       "context_window": 128000,
       "notes": "Z.AI lightweight model for routine tasks."

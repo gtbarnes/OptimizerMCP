@@ -243,6 +243,7 @@ command = "$NODE_BIN"
 args = ["$SCRIPT_DIR/build/index.js"]
 required = true
 startup_timeout_sec = 15
+tool_timeout_sec = 300
 EOF
 echo "  Added [mcp_servers.optimizer] to $CODEX_CONFIG ✓"
 

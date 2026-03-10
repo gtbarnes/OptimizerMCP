@@ -177,12 +177,17 @@ function computeScopeScore(text: string): number {
   let score = 0;
 
   // Multi-file indicators
-  if (/across\s+(multiple|many|several|all)\s+files/i.test(text)) score += 0.4;
+  if (/across\s+(multiple|many|several|all)\s+(files|services?|microservices?|modules?|packages?|repos?|endpoints?)/i.test(text)) score += 0.4;
+  if (/across\s+\d+\s+\w+/i.test(text)) score += 0.35;  // "across 15 microservices"
   if (/codebase/i.test(text)) score += 0.3;
   if (/project[-\s]wide/i.test(text)) score += 0.4;
+  if (/system[-\s]wide/i.test(text)) score += 0.4;
   if (/everywhere|throughout/i.test(text)) score += 0.3;
   if (/all\s+(the\s+)?files/i.test(text)) score += 0.3;
-  if (/every\s+(file|component|module)/i.test(text)) score += 0.3;
+  if (/every\s+(file|component|module|service)/i.test(text)) score += 0.3;
+  if (/end[-\s]to[-\s]end/i.test(text)) score += 0.3;
+  if (/full[-\s]stack/i.test(text)) score += 0.3;
+  if (/\d+\s+(microservices?|services?|modules?|packages?|components?)/i.test(text)) score += 0.3;
 
   // Multiple file paths mentioned
   const filePaths = text.match(/[\w./\\-]+\.\w{1,10}/g) ?? [];
@@ -235,6 +240,8 @@ function computeAgenticScore(text: string): number {
 
   // Complex workflow indicators
   if (/and\s+(also|then|make\s+sure)/i.test(text)) score += 0.1;
+  if (/including\s+\w+.*\s+and\s+/i.test(text)) score += 0.15;  // compound requirements
+  if (/with\s+\w+.*,\s+\w+.*,\s+(and\s+)?\w+/i.test(text)) score += 0.15;  // "with X, Y, and Z"
   if (/\b(CI|CD|pipeline|workflow|automation)\b/i.test(text)) score += 0.2;
 
   return Math.min(1, score);
