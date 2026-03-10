@@ -14,7 +14,7 @@
   "files": ["build", "config"],
   "keywords": ["mcp", "codex", "token-optimization", "model-routing"],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "better-sqlite3": "^12.6.2",
