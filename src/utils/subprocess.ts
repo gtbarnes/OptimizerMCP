@@ -105,7 +105,7 @@ export async function callOllama(
   prompt: string,
   options: { model?: string; timeoutMs?: number } = {}
 ): Promise<{ success: boolean; output: string; error?: string }> {
-  const { model = "qwen3:2b", timeoutMs = 30_000 } = options;
+  const { model = "qwen3:1.7b", timeoutMs = 30_000 } = options;
   const result = await runCommand("ollama", ["run", model, prompt], { timeoutMs });
 
   if (result.exitCode !== 0) {

@@ -128,14 +128,14 @@ else
   fi
 fi
 
-# Pull the default model for Ollama (qwen3:2b — small, fast, good for decomposition)
+# Pull the default model for Ollama (qwen3:1.7b — small, fast, good for decomposition)
 if command -v ollama &>/dev/null; then
-  if ollama list 2>/dev/null | grep -q "qwen3:2b"; then
-    echo "  Ollama model qwen3:2b: already pulled ✓"
+  if ollama list 2>/dev/null | grep -q "qwen3:1.7b"; then
+    echo "  Ollama model qwen3:1.7b: already pulled ✓"
   else
-    echo "  Pulling Ollama model qwen3:2b (small, ~1.5GB)..."
-    ollama pull qwen3:2b 2>&1 | tail -1
-    echo "  Ollama model qwen3:2b: ready ✓"
+    echo "  Pulling Ollama model qwen3:1.7b (small, ~1.5GB)..."
+    ollama pull qwen3:1.7b 2>&1 | tail -1
+    echo "  Ollama model qwen3:1.7b: ready ✓"
   fi
 fi
 

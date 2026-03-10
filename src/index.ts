@@ -395,7 +395,7 @@ server.registerTool(
       lines.push("RECOMMENDED: Install SymDex (pip install symdex) for 97% token reduction on code lookups");
     }
     if (!tools.ollama) {
-      lines.push("RECOMMENDED: Install Ollama (brew install ollama && ollama pull qwen3:2b) for auto task splitting and semantic compression");
+      lines.push("RECOMMENDED: Install Ollama (brew install ollama && ollama pull qwen3:1.7b) for auto task splitting and semantic compression");
     }
     if (!tools.distill) {
       lines.push("RECOMMENDED: Install Distill (npm i -g @samuelfaj/distill) for 95-99% token savings on CLI output");

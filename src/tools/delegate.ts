@@ -362,7 +362,7 @@ async function autoSplitTask(task: string): Promise<SubtaskInput[] | null> {
     `Return ONLY a JSON array of objects with "id" (kebab-case) and "prompt" (detailed instruction) fields. ` +
     `No markdown, no explanation, just the JSON array.\n\nTask: ${task}`;
 
-  const result = await callOllama(prompt, { model: "qwen3:2b", timeoutMs: 60_000 });
+  const result = await callOllama(prompt, { model: "qwen3:1.7b", timeoutMs: 60_000 });
   if (!result.success) return null;
 
   try {
@@ -476,7 +476,7 @@ export async function parallelDelegate(
         subtask_results: [{
           id: "auto-split", success: false, output: "",
           error: "Auto-split failed. Ollama may not be installed or the task couldn't be decomposed. " +
-            "Install Ollama (brew install ollama && ollama pull qwen3:2b) or provide pre-split subtasks.",
+            "Install Ollama (brew install ollama && ollama pull qwen3:1.7b) or provide pre-split subtasks.",
           model_used: "", service_used: "", estimated_tokens: 0,
           complexity: "unknown", routing_reasoning: "", used_fallback: false, duration_ms: 0,
         }],
