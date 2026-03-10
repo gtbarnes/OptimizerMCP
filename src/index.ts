@@ -13,6 +13,11 @@ import { getQuotaStatus, recordUsage } from "./tracking/usage-store.js";
 import { getModelRegistry } from "./config/models.js";
 import { detectAvailableTools } from "./utils/subprocess.js";
 
+// Display-friendly service names for user-facing output
+function displayService(service: string): string {
+  return service === "zai" ? "zhipuai" : service;
+}
+
 const server = new McpServer({
   name: "optimizer-mcp",
   version: "1.0.0",
@@ -119,11 +124,18 @@ server.registerTool(
     const quotaStatuses = getQuotaStatus();
     const decision = routeTask(classification, quotaStatuses);
 
+    // Replace internal "zai" with "zhipuai" for user-facing output
+    const displayDecision = {
+      ...decision,
+      recommended_service: displayService(decision.recommended_service),
+      fallback_service: displayService(decision.fallback_service),
+    };
+
     return {
       content: [
         {
           type: "text" as const,
-          text: JSON.stringify(decision, null, 2),
+          text: JSON.stringify(displayDecision, null, 2),
         },
       ],
     };
@@ -185,30 +197,33 @@ server.registerTool(
         .string()
         .describe("Model ID to use (e.g., claude-sonnet-4-6, codex-mini, glm-4.7)"),
       target_service: z
-        .enum(["codex", "claude", "zai"])
-        .describe("Which service to delegate to"),
+        .enum(["codex", "claude", "zai", "zhipuai"])
+        .describe("Which service to delegate to (zhipuai = Z.AI Coding Plan)"),
       fallback_model: z
         .string()
         .optional()
         .describe("Fallback model ID if primary fails (from recommend_model)"),
       fallback_service: z
-        .enum(["codex", "claude", "zai"])
+        .enum(["codex", "claude", "zai", "zhipuai"])
         .optional()
         .describe("Fallback service if primary fails (from recommend_model)"),
       timeout_seconds: z
         .number()
         .optional()
-        .describe("Timeout in seconds (default: 120)"),
+        .describe("Timeout in seconds (default: 240)"),
     },
   },
   async ({ prompt, target_model, target_service, fallback_model, fallback_service, timeout_seconds }) => {
-    const result = await delegateTask(prompt, target_model, target_service, {
-      timeoutMs: (timeout_seconds ?? 120) * 1000,
+    // Normalize "zhipuai" to internal "zai" service type
+    const normalizedService = (target_service === "zhipuai" ? "zai" : target_service) as "codex" | "claude" | "zai";
+    const normalizedFallback = (fallback_service === "zhipuai" ? "zai" : fallback_service) as "codex" | "claude" | "zai" | undefined;
+    const result = await delegateTask(prompt, target_model, normalizedService, {
+      timeoutMs: (timeout_seconds ?? 240) * 1000,
       fallbackModel: fallback_model,
-      fallbackService: fallback_service,
+      fallbackService: normalizedFallback,
     });
 
-    const header = `[Delegated to ${result.model_used}@${result.service_used} | ~${result.estimated_tokens} tokens]`;
+    const header = `[Delegated to ${result.model_used}@${displayService(result.service_used)} | ~${result.estimated_tokens} tokens]`;
     return {
       content: [
         {
@@ -480,9 +495,9 @@ server.registerTool(
             id: z.string().describe("Unique subtask identifier (e.g., 'auth-backend')"),
             prompt: z.string().describe("The task prompt to execute"),
             target_service: z
-              .enum(["codex", "claude", "zai"])
+              .enum(["codex", "claude", "zai", "zhipuai"])
               .optional()
-              .describe("Override auto-routing for this subtask"),
+              .describe("Override auto-routing for this subtask (use 'zhipuai' for Z.AI)"),
             target_model: z
               .string()
               .optional()
@@ -519,7 +534,7 @@ server.registerTool(
       subtasks: subtasks?.map((s) => ({
         id: s.id,
         prompt: s.prompt,
-        targetService: s.target_service,
+        targetService: s.target_service === "zhipuai" ? "zai" : s.target_service,
         targetModel: s.target_model,
         timeoutMs: s.timeout_seconds ? s.timeout_seconds * 1000 : undefined,
         dependsOn: s.depends_on,
