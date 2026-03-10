@@ -7,7 +7,7 @@ import { z } from "zod";
 import { classifyTask } from "./tools/classify.js";
 import { routeTask } from "./tools/route.js";
 import { checkQuota } from "./tools/quota.js";
-import { delegateTask } from "./tools/delegate.js";
+import { delegateTask, parallelDelegate } from "./tools/delegate.js";
 import { optimizeContext, getProjectSummary } from "./tools/optimize.js";
 import { getQuotaStatus, recordUsage } from "./tracking/usage-store.js";
 import { getModelRegistry } from "./config/models.js";
@@ -382,6 +382,8 @@ server.registerTool(
     lines.push(`  tokf (output filter): ${tools.tokf ? "YES" : "NO"}`);
     lines.push(`  SymDex (code indexer): ${tools.symdex ? "YES" : "NO"}`);
     lines.push(`  codebase-memory-mcp: ${tools.codebaseMemory ? "YES" : "NO"}`);
+    lines.push(`  Ollama (local LLM): ${tools.ollama ? "YES" : "NO"}`);
+    lines.push(`  Distill (semantic compressor): ${tools.distill ? "YES" : "NO"}`);
 
     if (!tools.opencode) {
       lines.push("\nRECOMMENDED: Install OpenCode for Z.AI delegation (brew install anomalyco/tap/opencode)");
@@ -391,6 +393,12 @@ server.registerTool(
     }
     if (!tools.symdex && !tools.codebaseMemory) {
       lines.push("RECOMMENDED: Install SymDex (pip install symdex) for 97% token reduction on code lookups");
+    }
+    if (!tools.ollama) {
+      lines.push("RECOMMENDED: Install Ollama (brew install ollama && ollama pull qwen3:2b) for auto task splitting and semantic compression");
+    }
+    if (!tools.distill) {
+      lines.push("RECOMMENDED: Install Distill (npm i -g @samuelfaj/distill) for 95-99% token savings on CLI output");
     }
 
     return {
@@ -449,13 +457,95 @@ server.registerTool(
   }
 );
 
+// ── Tool 10: parallel_delegate ────────────────────────────────────────
+
+server.registerTool(
+  "parallel_delegate",
+  {
+    description:
+      "Delegate multiple subtasks to different services in parallel. " +
+      "Each subtask is independently classified, routed to the optimal service, and executed. " +
+      "Use when a task can be decomposed into 2-10 independent pieces. " +
+      "Supports auto-split via local Ollama model (set auto_split=true with a single task prompt). " +
+      "The optimizer auto-routes each subtask — avoid specifying target_service unless required.",
+    inputSchema: {
+      task: z
+        .string()
+        .optional()
+        .describe("Single task prompt for auto-split mode (requires Ollama). Ignored if subtasks provided."),
+      subtasks: z
+        .array(
+          z.object({
+            id: z.string().describe("Unique subtask identifier (e.g., 'auth-backend')"),
+            prompt: z.string().describe("The task prompt to execute"),
+            target_service: z
+              .enum(["codex", "claude", "zai"])
+              .optional()
+              .describe("Override auto-routing for this subtask"),
+            target_model: z
+              .string()
+              .optional()
+              .describe("Override auto-routing with a specific model"),
+            timeout_seconds: z
+              .number()
+              .optional()
+              .describe("Per-subtask timeout (default: 120)"),
+            depends_on: z
+              .array(z.string())
+              .optional()
+              .describe("IDs of subtasks that must complete before this one starts"),
+          })
+        )
+        .optional()
+        .describe("2-10 subtasks to run in parallel. Required unless using auto_split with task."),
+      auto_split: z
+        .boolean()
+        .optional()
+        .describe("Use local Ollama model to auto-decompose the task (default: false)"),
+      strategy: z
+        .enum(["spread", "cheapest", "fastest"])
+        .optional()
+        .describe("Distribution strategy: spread (balance across services), cheapest (minimize cost), fastest (no rebalancing)"),
+      global_timeout_seconds: z
+        .number()
+        .optional()
+        .describe("Overall timeout for all subtasks in seconds (default: 300)"),
+    },
+  },
+  async ({ task, subtasks, auto_split, strategy, global_timeout_seconds }) => {
+    const result = await parallelDelegate({
+      task,
+      subtasks: subtasks?.map((s) => ({
+        id: s.id,
+        prompt: s.prompt,
+        targetService: s.target_service,
+        targetModel: s.target_model,
+        timeoutMs: s.timeout_seconds ? s.timeout_seconds * 1000 : undefined,
+        dependsOn: s.depends_on,
+      })),
+      autoSplit: auto_split,
+      strategy: strategy ?? "spread",
+      globalTimeoutMs: (global_timeout_seconds ?? 300) * 1000,
+    });
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
+
 // ── Start server ───────────────────────────────────────────────────────
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("OptimizerMCP server running on stdio");
-  console.error("Tools: classify_task, recommend_model, check_quota, delegate_task, optimize_context, get_project_summary, update_model_registry, check_available_tools, record_usage");
+  console.error("Tools: classify_task, recommend_model, check_quota, delegate_task, parallel_delegate, optimize_context, get_project_summary, update_model_registry, check_available_tools, record_usage");
 }
 
 main().catch((error) => {

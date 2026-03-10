@@ -1,4 +1,4 @@
-import { runCommand, detectAvailableTools } from "../utils/subprocess.js";
+import { runCommand, detectAvailableTools, compressWithDistill } from "../utils/subprocess.js";
 
 export interface OptimizationResult {
   optimized_content: string;
@@ -71,6 +71,15 @@ export async function optimizeContext(
     }
   }
 
+  // Semantic compression via Distill or Ollama (best results for CLI output)
+  if ((tools.distill || tools.ollama) && looksLikeCliOutput(content) && estimateTokens(content) > 200) {
+    const compressed = await compressWithDistill(content, "extract key information, errors, and results");
+    if (compressed.success && estimateTokens(compressed.output) < estimateTokens(content)) {
+      content = compressed.output;
+      toolsUsed.push(compressed.tool);
+    }
+  }
+
   // Always apply basic compression
   content = applyBasicCompression(content);
   toolsUsed.push("basic-compression");
@@ -90,6 +99,11 @@ export async function optimizeContext(
   if (!tools.rtk && !tools.tokf) {
     suggestions.push(
       "No CLI output compressors detected. Install RTK or tokf for 60-90% savings on command output."
+    );
+  }
+  if (!tools.distill && !tools.ollama) {
+    suggestions.push(
+      "No semantic compressor detected. Install Ollama (brew install ollama) + Distill (npm i -g @samuelfaj/distill) for 95-99% savings via LLM-based compression."
     );
   }
 

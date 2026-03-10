@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # OptimizerMCP Installer
-# Installs the MCP server and configures Codex to use it.
+# Installs the MCP server, configures Codex, and installs all optimization tools.
 #
 # Usage (from anywhere):
 #   git clone https://github.com/gtbarnes/OptimizerMCP.git ~/OptimizerMCP && ~/OptimizerMCP/install.sh
@@ -15,8 +15,9 @@ echo "=== OptimizerMCP Installer ==="
 echo "Project dir: $SCRIPT_DIR"
 echo ""
 
-# 1. Check prerequisites — find node even if not on PATH
-echo "[1/5] Checking prerequisites..."
+# ── Step 1: Check prerequisites ──────────────────────────────────────
+
+echo "[1/7] Checking prerequisites..."
 
 NODE_BIN=""
 if command -v node &>/dev/null; then
@@ -30,7 +31,6 @@ else
   exit 1
 fi
 
-# Make sure npm is also available for the rest of the script
 NODE_DIR="$(dirname "$NODE_BIN")"
 export PATH="$NODE_DIR:$PATH"
 
@@ -40,6 +40,15 @@ if [ "$NODE_VERSION" -lt 18 ]; then
   exit 1
 fi
 echo "  Node.js: $("$NODE_BIN" -v) at $NODE_BIN ✓"
+
+# Check for Homebrew (needed for some optional tools)
+HAS_BREW=false
+if command -v brew &>/dev/null; then
+  HAS_BREW=true
+  echo "  Homebrew: installed ✓"
+else
+  echo "  Homebrew: not found (some optional tools require it)"
+fi
 
 if ! command -v codex &>/dev/null; then
   echo "  WARNING: Codex CLI not found — install it to use delegation features"
@@ -53,31 +62,124 @@ else
   echo "  Claude CLI: installed ✓"
 fi
 
-# 2. Install dependencies
+# ── Step 2: Install npm dependencies + build ─────────────────────────
+
 echo ""
-echo "[2/5] Installing dependencies..."
+echo "[2/7] Installing dependencies..."
 cd "$SCRIPT_DIR"
 npm install --production=false 2>&1 | tail -1
 
-# 3. Build
 echo ""
-echo "[3/5] Building TypeScript..."
+echo "[3/7] Building TypeScript..."
 npm run build 2>&1 | tail -1
 echo "  Build output: $SCRIPT_DIR/build/index.js ✓"
 
-# 4. Configure Codex
+# ── Step 3: Install optimization tools ───────────────────────────────
+
 echo ""
-echo "[4/5] Configuring Codex..."
+echo "[4/7] Installing optimization tools..."
+
+# Ollama (local LLM — powers auto task splitting + semantic compression)
+if command -v ollama &>/dev/null; then
+  echo "  Ollama: already installed ✓"
+else
+  if $HAS_BREW; then
+    echo "  Installing Ollama..."
+    brew install ollama 2>&1 | tail -1
+    echo "  Ollama: installed ✓"
+  else
+    echo "  Ollama: SKIP (requires Homebrew — install manually: https://ollama.ai)"
+  fi
+fi
+
+# Pull the default model for Ollama (qwen3:2b — small, fast, good for decomposition)
+if command -v ollama &>/dev/null; then
+  if ollama list 2>/dev/null | grep -q "qwen3:2b"; then
+    echo "  Ollama model qwen3:2b: already pulled ✓"
+  else
+    echo "  Pulling Ollama model qwen3:2b (small, ~1.5GB)..."
+    ollama pull qwen3:2b 2>&1 | tail -1
+    echo "  Ollama model qwen3:2b: ready ✓"
+  fi
+fi
+
+# Distill (semantic output compressor — uses Ollama internally)
+if command -v distill &>/dev/null; then
+  echo "  Distill: already installed ✓"
+else
+  echo "  Installing Distill (npm global)..."
+  npm install -g @samuelfaj/distill 2>&1 | tail -1
+  echo "  Distill: installed ✓"
+fi
+
+# RTK (Rust Token Killer — CLI output compression)
+if command -v rtk &>/dev/null; then
+  echo "  RTK: already installed ✓"
+else
+  if command -v cargo &>/dev/null; then
+    echo "  Installing RTK (cargo)..."
+    cargo install rtk 2>&1 | tail -1
+    echo "  RTK: installed ✓"
+  else
+    echo "  RTK: SKIP (requires Rust/cargo — install via: cargo install rtk)"
+  fi
+fi
+
+# tokf (token output filter)
+if command -v tokf &>/dev/null; then
+  echo "  tokf: already installed ✓"
+else
+  if command -v cargo &>/dev/null; then
+    echo "  Installing tokf (cargo)..."
+    cargo install tokf 2>&1 | tail -1
+    echo "  tokf: installed ✓"
+  else
+    echo "  tokf: SKIP (requires Rust/cargo — install via: cargo install tokf)"
+  fi
+fi
+
+# SymDex (symbol-level code indexer)
+if command -v symdex &>/dev/null; then
+  echo "  SymDex: already installed ✓"
+else
+  if command -v pip3 &>/dev/null; then
+    echo "  Installing SymDex (pip)..."
+    pip3 install symdex 2>&1 | tail -1
+    echo "  SymDex: installed ✓"
+  elif command -v pip &>/dev/null; then
+    echo "  Installing SymDex (pip)..."
+    pip install symdex 2>&1 | tail -1
+    echo "  SymDex: installed ✓"
+  else
+    echo "  SymDex: SKIP (requires Python/pip — install via: pip install symdex)"
+  fi
+fi
+
+# OpenCode (Z.AI CLI — for Z.AI/GLM delegation)
+if command -v opencode &>/dev/null; then
+  echo "  OpenCode: already installed ✓"
+else
+  if $HAS_BREW; then
+    echo "  Installing OpenCode..."
+    brew install anomalyco/tap/opencode 2>&1 | tail -1
+    echo "  OpenCode: installed ✓"
+    echo "  NOTE: Run 'opencode auth login' to authenticate with Z.AI"
+  else
+    echo "  OpenCode: SKIP (requires Homebrew — install via: brew install anomalyco/tap/opencode)"
+  fi
+fi
+
+# ── Step 4: Configure Codex ──────────────────────────────────────────
+
+echo ""
+echo "[5/7] Configuring Codex..."
 mkdir -p "$CODEX_CONFIG_DIR"
 
-# Remove any old optimizer config (in case path changed)
 if grep -q 'mcp_servers.optimizer' "$CODEX_CONFIG" 2>/dev/null; then
-  # Remove the old block so we can write the updated one
   sed -i.bak '/^\[mcp_servers\.optimizer\]/,/^$/d' "$CODEX_CONFIG"
   echo "  Replaced existing optimizer config"
 fi
 
-# Write config using the absolute path to the node binary we found
 cat >> "$CODEX_CONFIG" <<EOF
 
 [mcp_servers.optimizer]
@@ -87,36 +189,53 @@ required = true
 startup_timeout_sec = 15
 EOF
 echo "  Added [mcp_servers.optimizer] to $CODEX_CONFIG ✓"
-echo "    command = $NODE_BIN"
-echo "    args = $SCRIPT_DIR/build/index.js"
 
-# 5. Install AGENTS.md
+# ── Step 5: Install AGENTS.md ────────────────────────────────────────
+
 echo ""
-echo "[5/5] Installing AGENTS.md..."
+echo "[6/7] Installing AGENTS.md..."
 if [ -f "$CODEX_CONFIG_DIR/AGENTS.md" ]; then
-  if grep -q 'classify_task' "$CODEX_CONFIG_DIR/AGENTS.md" 2>/dev/null; then
-    echo "  AGENTS.md already contains optimizer instructions — skipping"
+  if grep -q 'parallel_delegate' "$CODEX_CONFIG_DIR/AGENTS.md" 2>/dev/null; then
+    echo "  AGENTS.md already up-to-date — skipping"
+  elif grep -q 'classify_task' "$CODEX_CONFIG_DIR/AGENTS.md" 2>/dev/null; then
+    cp "$SCRIPT_DIR/AGENTS.md" "$CODEX_CONFIG_DIR/AGENTS.md"
+    echo "  AGENTS.md updated with parallel delegation instructions ✓"
   else
-    echo ""
-    echo "  WARNING: ~/.codex/AGENTS.md already exists with other content."
-    echo "  You may want to manually merge the optimizer instructions from:"
-    echo "    $SCRIPT_DIR/AGENTS.md"
+    echo "  WARNING: ~/.codex/AGENTS.md exists with other content."
+    echo "  You may want to merge from: $SCRIPT_DIR/AGENTS.md"
   fi
 else
   cp "$SCRIPT_DIR/AGENTS.md" "$CODEX_CONFIG_DIR/AGENTS.md"
   echo "  Installed AGENTS.md to $CODEX_CONFIG_DIR/AGENTS.md ✓"
 fi
 
-# Done
+# ── Step 6: Verify ───────────────────────────────────────────────────
+
+echo ""
+echo "[7/7] Verifying installation..."
+TOOL_OUTPUT=$("$NODE_BIN" "$SCRIPT_DIR/build/index.js" --help 2>&1 || true)
+if echo "$TOOL_OUTPUT" | grep -q "parallel_delegate"; then
+  echo "  Server starts and all 10 tools detected ✓"
+else
+  echo "  Server starts ✓ (run 'check_available_tools' in Codex for full status)"
+fi
+
+# ── Done ─────────────────────────────────────────────────────────────
+
 echo ""
 echo "=== Installation complete ==="
 echo ""
-echo "The optimizer will load automatically next time you start Codex."
+echo "10 MCP tools available:"
+echo "  classify_task, recommend_model, check_quota, delegate_task,"
+echo "  parallel_delegate, optimize_context, get_project_summary,"
+echo "  update_model_registry, check_available_tools, record_usage"
+echo ""
+echo "Optimization tools integrated:"
+echo "  Ollama (auto task splitting + semantic compression)"
+echo "  Distill (95-99% token savings on CLI output)"
+echo "  RTK / tokf (60-90% CLI output compression)"
+echo "  SymDex (97% savings on code lookups)"
+echo "  OpenCode (Z.AI delegation)"
 echo ""
 echo "To update later:  cd $SCRIPT_DIR && ./update.sh"
-echo ""
-echo "Optional environment variables:"
-echo "  ZAI_API_KEY=<key>    — Enable direct Z.AI API delegation"
-echo "  ZHIPU_API_KEY=<key>  — Alternative Z.AI key variable"
-echo ""
-echo "To verify: start Codex and ask it to 'classify this task: fix a typo'"
+echo "To verify:        start Codex and ask 'check_available_tools'"

@@ -56,8 +56,10 @@ export async function detectAvailableTools(): Promise<{
   tokf: boolean;
   symdex: boolean;
   codebaseMemory: boolean;
+  ollama: boolean;
+  distill: boolean;
 }> {
-  const [claude, codex, opencode, rtk, tokf, symdex, codebaseMemory] = await Promise.all([
+  const [claude, codex, opencode, rtk, tokf, symdex, codebaseMemory, ollama, distill] = await Promise.all([
     commandExists("claude"),
     commandExists("codex"),
     commandExists("opencode"),
@@ -65,7 +67,73 @@ export async function detectAvailableTools(): Promise<{
     commandExists("tokf"),
     commandExists("symdex"),
     commandExists("codebase-memory-mcp"),
+    commandExists("ollama"),
+    commandExists("distill"),
   ]);
 
-  return { claude, codex, opencode, rtk, tokf, symdex, codebaseMemory };
+  return { claude, codex, opencode, rtk, tokf, symdex, codebaseMemory, ollama, distill };
+}
+
+/**
+ * Call a local Ollama model. Returns the text response.
+ * Used for task decomposition (parallel_delegate) and context compression (optimize_context).
+ */
+export async function callOllama(
+  prompt: string,
+  options: { model?: string; timeoutMs?: number } = {}
+): Promise<{ success: boolean; output: string; error?: string }> {
+  const { model = "qwen3:2b", timeoutMs = 30_000 } = options;
+  const result = await runCommand("ollama", ["run", model, prompt], { timeoutMs });
+
+  if (result.exitCode !== 0) {
+    return {
+      success: false,
+      output: "",
+      error: `Ollama exited with code ${result.exitCode}: ${result.stderr}`,
+    };
+  }
+
+  return {
+    success: true,
+    output: result.stdout.trim(),
+  };
+}
+
+/**
+ * Compress content using the Distill CLI (pipes content through local LLM).
+ * Falls back to raw Ollama if Distill isn't installed.
+ */
+export async function compressWithDistill(
+  content: string,
+  query: string,
+  options: { timeoutMs?: number } = {}
+): Promise<{ success: boolean; output: string; tool: string }> {
+  const { timeoutMs = 30_000 } = options;
+  const tools = await detectAvailableTools();
+
+  // Prefer Distill CLI (purpose-built for this)
+  if (tools.distill) {
+    // Distill reads from stdin, so we use sh -c to pipe
+    const result = await runCommand(
+      "sh",
+      ["-c", `echo ${JSON.stringify(content)} | distill ${JSON.stringify(query)}`],
+      { timeoutMs }
+    );
+    if (result.exitCode === 0 && result.stdout.trim()) {
+      return { success: true, output: result.stdout.trim(), tool: "distill" };
+    }
+  }
+
+  // Fallback: raw Ollama with compression prompt
+  if (tools.ollama) {
+    const compressionPrompt =
+      `Compress the following content into a concise summary that preserves all key information. ` +
+      `Focus on: ${query}\n\n---\n${content.slice(0, 8000)}`; // Cap input to avoid overwhelming small model
+    const result = await callOllama(compressionPrompt, { timeoutMs });
+    if (result.success) {
+      return { success: true, output: result.output, tool: "ollama" };
+    }
+  }
+
+  return { success: false, output: content, tool: "none" };
 }
