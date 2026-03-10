@@ -161,16 +161,16 @@ else
   fi
 fi
 
-# tokf (token output filter)
+# tokf (token output filter — config-driven CLI output compressor)
 if command -v tokf &>/dev/null; then
   echo "  tokf: already installed ✓"
 else
-  if command -v cargo &>/dev/null; then
-    echo "  Installing tokf (cargo)..."
-    cargo install tokf 2>&1 | tail -1
+  if $HAS_BREW; then
+    echo "  Installing tokf (brew)..."
+    brew install mpecan/tokf/tokf 2>&1 | tail -1
     echo "  tokf: installed ✓"
   else
-    echo "  tokf: SKIP (requires Rust/cargo — install via: cargo install tokf)"
+    echo "  tokf: SKIP (requires Homebrew — install via: brew install mpecan/tokf/tokf)"
   fi
 fi
 
@@ -202,6 +202,19 @@ else
     echo "  NOTE: Run 'opencode auth login' to authenticate with Z.AI"
   else
     echo "  OpenCode: SKIP (requires Homebrew — install via: brew install anomalyco/tap/opencode)"
+  fi
+fi
+
+# codebase-memory-mcp (persistent knowledge graph for codebase — 99% token reduction)
+if command -v codebase-memory-mcp &>/dev/null; then
+  echo "  codebase-memory-mcp: already installed ✓"
+else
+  echo "  Installing codebase-memory-mcp..."
+  curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/scripts/setup.sh | bash 2>&1 | tail -3
+  if command -v codebase-memory-mcp &>/dev/null; then
+    echo "  codebase-memory-mcp: installed ✓"
+  else
+    echo "  codebase-memory-mcp: SKIP (install manually: https://github.com/DeusData/codebase-memory-mcp)"
   fi
 fi
 

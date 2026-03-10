@@ -389,10 +389,10 @@ server.registerTool(
       lines.push("\nRECOMMENDED: Install OpenCode for Z.AI delegation (brew install anomalyco/tap/opencode)");
     }
     if (!tools.rtk && !tools.tokf) {
-      lines.push("RECOMMENDED: Install RTK (cargo install rtk) or tokf (cargo install tokf)");
+      lines.push("RECOMMENDED: Install RTK (cargo install rtk) or tokf (brew install mpecan/tokf/tokf)");
     }
     if (!tools.symdex && !tools.codebaseMemory) {
-      lines.push("RECOMMENDED: Install SymDex (pip install symdex) for 97% token reduction on code lookups");
+      lines.push("RECOMMENDED: Install SymDex (pip install symdex) or codebase-memory-mcp (https://github.com/DeusData/codebase-memory-mcp)");
     }
     if (!tools.ollama) {
       lines.push("RECOMMENDED: Install Ollama (brew install ollama && ollama pull qwen3:1.7b) for auto task splitting and semantic compression");
