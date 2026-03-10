@@ -1,0 +1,84 @@
+import {
+  getQuotaStatus,
+  getUsageSummary,
+  getTokensInWindow,
+  type QuotaStatus,
+} from "../tracking/usage-store.js";
+
+export interface QuotaReport {
+  statuses: QuotaStatus[];
+  summary: string;
+  should_use_opus: boolean;
+  should_use_flagship: boolean;
+  budget_advice: string;
+}
+
+export function checkQuota(service?: string): QuotaReport {
+  const allStatuses = getQuotaStatus();
+  const statuses = service
+    ? allStatuses.filter((s) => s.service === service)
+    : allStatuses;
+
+  const summary = getUsageSummary();
+
+  // Determine if we should use expensive models
+  const claudeStatus = allStatuses.find((s) => s.service === "claude");
+  const codexStatus = allStatuses.find((s) => s.service === "codex");
+  const zaiStatus = allStatuses.find((s) => s.service === "zai");
+
+  const claudePercent = claudeStatus?.percent_5h ?? 0;
+  const codexPercent = codexStatus?.percent_5h ?? 0;
+  const zaiPercent = zaiStatus?.percent_5h ?? 0;
+
+  const should_use_opus = claudePercent < 30;
+  const should_use_flagship = codexPercent < 40 || claudePercent < 40;
+
+  // Token usage for extra context
+  const claudeTokens = getTokensInWindow("claude", 5);
+  const codexTokens = getTokensInWindow("codex", 5);
+  const zaiTokens = getTokensInWindow("zai", 5);
+
+  let budget_advice: string;
+  if (claudePercent > 80 && codexPercent > 80 && zaiPercent > 80) {
+    budget_advice =
+      "CRITICAL: All three services near limits. Use only budget models. " +
+      "Consider waiting for the 5-hour window to reset.";
+  } else if (claudePercent > 80 && codexPercent > 80) {
+    budget_advice =
+      "Claude and Codex near limits. Route work to Z.AI. " +
+      "Use glm-4.5-air for simple tasks, glm-4.7 for moderate.";
+  } else if (claudePercent > 80) {
+    budget_advice =
+      "Claude near limit. Route to Z.AI (glm-4.7) or Codex. " +
+      "Use codex-mini for simple tasks, Z.AI for coding tasks.";
+  } else if (codexPercent > 80) {
+    budget_advice =
+      "Codex near limit. Route to Z.AI or Claude. " +
+      "Use glm-4.5-air/haiku for simple tasks, glm-4.7/sonnet for moderate.";
+  } else if (zaiPercent > 80) {
+    budget_advice =
+      "Z.AI near limit. Route to Codex or Claude for budget tasks. " +
+      "Z.AI quotas are generous — this may indicate heavy use.";
+  } else if (claudePercent > 50 || codexPercent > 50) {
+    budget_advice =
+      "Moderate usage on premium services. Prefer Z.AI (glm-4.7) for cost savings. " +
+      "Save flagship models for complex/architectural tasks only.";
+  } else {
+    budget_advice =
+      "Good budget headroom. Full model range available. " +
+      "Still prefer Z.AI for routine tasks to conserve Claude/Codex quota.";
+  }
+
+  budget_advice += `\n\nEstimated tokens used (5h window):`;
+  budget_advice += `\n  Claude: ~${claudeTokens.input + claudeTokens.output} total tokens`;
+  budget_advice += `\n  Codex: ~${codexTokens.input + codexTokens.output} total tokens`;
+  budget_advice += `\n  Z.AI: ~${zaiTokens.input + zaiTokens.output} total tokens`;
+
+  return {
+    statuses,
+    summary,
+    should_use_opus,
+    should_use_flagship,
+    budget_advice,
+  };
+}

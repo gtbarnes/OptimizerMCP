@@ -1,0 +1,98 @@
+{
+  "models": [
+    {
+      "id": "gpt-5.4",
+      "service": "codex",
+      "tier": "flagship",
+      "capabilities": ["coding", "reasoning", "computer-use", "multi-file"],
+      "cost_weight": 10,
+      "context_window": 200000
+    },
+    {
+      "id": "gpt-5.3-codex",
+      "service": "codex",
+      "tier": "high",
+      "capabilities": ["coding", "reasoning", "multi-file"],
+      "cost_weight": 8,
+      "context_window": 200000
+    },
+    {
+      "id": "codex-mini",
+      "service": "codex",
+      "tier": "budget",
+      "capabilities": ["coding", "simple-tasks"],
+      "cost_weight": 1,
+      "context_window": 128000
+    },
+    {
+      "id": "claude-opus-4-6",
+      "service": "claude",
+      "tier": "flagship",
+      "capabilities": ["coding", "reasoning", "analysis", "multi-file", "architectural", "computer-use"],
+      "cost_weight": 10,
+      "context_window": 200000
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "service": "claude",
+      "tier": "mid",
+      "capabilities": ["coding", "reasoning", "multi-file", "computer-use"],
+      "cost_weight": 5,
+      "context_window": 200000
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "service": "claude",
+      "tier": "budget",
+      "capabilities": ["coding", "simple-tasks"],
+      "cost_weight": 1,
+      "context_window": 200000
+    },
+    {
+      "id": "glm-5",
+      "service": "zai",
+      "tier": "flagship",
+      "capabilities": ["coding", "reasoning", "multi-file"],
+      "cost_weight": 3,
+      "context_window": 128000,
+      "notes": "Z.AI premium model. 3x quota consumption during peak hours."
+    },
+    {
+      "id": "glm-4.7",
+      "service": "zai",
+      "tier": "mid",
+      "capabilities": ["coding", "reasoning", "multi-file"],
+      "cost_weight": 1,
+      "context_window": 200000,
+      "notes": "Z.AI workhorse model. SWE-bench 73.8%, HumanEval 85.2%."
+    },
+    {
+      "id": "glm-4.5-air",
+      "service": "zai",
+      "tier": "budget",
+      "capabilities": ["coding", "simple-tasks"],
+      "cost_weight": 0.5,
+      "context_window": 128000,
+      "notes": "Z.AI lightweight model for routine tasks."
+    }
+  ],
+  "plan_limits": {
+    "codex_plus": {
+      "tasks_per_5h_min": 30,
+      "tasks_per_5h_max": 150,
+      "weekly_multiplier": 7
+    },
+    "claude_pro": {
+      "opus_messages_per_5h": 10,
+      "sonnet_messages_per_5h": 45,
+      "haiku_messages_per_5h": 100,
+      "weekly_multiplier": 5
+    },
+    "zai_lite": {
+      "prompts_per_5h": 120,
+      "weekly_prompts": 400,
+      "glm5_multiplier": 3,
+      "peak_hours_utc8": "14:00-18:00"
+    }
+  }
+}
