@@ -128,8 +128,15 @@ else
   fi
 fi
 
-# Pull the default model for Ollama (qwen3:1.7b — small, fast, good for decomposition)
+# Ensure Ollama service is running, then pull the default model
 if command -v ollama &>/dev/null; then
+  # Start the service if not already running (needed for pull/run)
+  if ! pgrep -qf "ollama serve" 2>/dev/null; then
+    echo "  Starting Ollama service..."
+    ollama serve &>/dev/null &
+    sleep 2  # give it a moment to start
+  fi
+
   if ollama list 2>/dev/null | grep -q "qwen3:1.7b"; then
     echo "  Ollama model qwen3:1.7b: already pulled ✓"
   else
