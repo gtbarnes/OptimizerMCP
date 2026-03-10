@@ -98,7 +98,7 @@ export async function detectAvailableTools(): Promise<{
 }
 
 /** Escape content for safe use in a shell single-quote context */
-function shellEscape(s: string): string {
+export function shellEscape(s: string): string {
   return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
@@ -134,10 +134,10 @@ export async function callOllama(
 export async function compressWithDistill(
   content: string,
   query: string,
-  options: { timeoutMs?: number } = {}
+  options: { timeoutMs?: number; predetectedTools?: Awaited<ReturnType<typeof detectAvailableTools>> } = {}
 ): Promise<{ success: boolean; output: string; tool: string }> {
   const { timeoutMs = 30_000 } = options;
-  const tools = await detectAvailableTools();
+  const tools = options.predetectedTools ?? await detectAvailableTools();
 
   // Prefer Distill CLI (purpose-built for this)
   if (tools.distill) {

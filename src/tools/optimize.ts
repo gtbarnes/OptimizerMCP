@@ -1,4 +1,4 @@
-import { runCommand, detectAvailableTools, compressWithDistill } from "../utils/subprocess.js";
+import { runCommand, detectAvailableTools, compressWithDistill, shellEscape } from "../utils/subprocess.js";
 
 export interface OptimizationResult {
   optimized_content: string;
@@ -77,7 +77,7 @@ export async function optimizeContext(
 
   // Semantic compression via Distill or Ollama (best results for CLI output)
   if ((tools.distill || tools.ollama) && isCliOutput && estimateTokens(content) > 200) {
-    const compressed = await compressWithDistill(content, "extract key information, errors, and results");
+    const compressed = await compressWithDistill(content, "extract key information, errors, and results", { predetectedTools: tools });
     if (compressed.success && estimateTokens(compressed.output) < estimateTokens(content)) {
       content = compressed.output;
       toolsUsed.push(compressed.tool);
@@ -185,11 +185,6 @@ async function compressWithTokf(content: string, _cwd: string): Promise<string |
     // Fall through
   }
   return null;
-}
-
-/** Escape content for safe use in a shell single-quote context */
-function shellEscape(s: string): string {
-  return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
 function applyBasicCompression(text: string): string {

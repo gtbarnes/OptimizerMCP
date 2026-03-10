@@ -9,12 +9,6 @@ export interface OptimizerSettings {
     claude: "pro" | "max_100" | "max_200" | "api";
     zai: "lite" | "pro" | "api";
   };
-  availableTools: {
-    codebaseMemoryMcp: boolean;
-    symdex: boolean;
-    rtk: boolean;
-    tokf: boolean;
-  };
 }
 
 const DATA_DIR = join(homedir(), ".optimizer-mcp");
@@ -27,12 +21,6 @@ export function getSettings(): OptimizerSettings {
       codex: "plus",
       claude: "pro",
       zai: "lite",
-    },
-    availableTools: {
-      codebaseMemoryMcp: false,
-      symdex: false,
-      rtk: false,
-      tokf: false,
     },
   };
 }

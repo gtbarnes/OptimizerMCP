@@ -10,7 +10,7 @@ import { checkQuota } from "./tools/quota.js";
 import { delegateTask, parallelDelegate } from "./tools/delegate.js";
 import { optimizeContext, getProjectSummary } from "./tools/optimize.js";
 import { getQuotaStatus, recordUsage } from "./tracking/usage-store.js";
-import { getModelRegistry, invalidateRegistryCache } from "./config/models.js";
+import { invalidateRegistryCache } from "./config/models.js";
 import { detectAvailableTools } from "./utils/subprocess.js";
 
 // Display-friendly service names for user-facing output
@@ -512,7 +512,7 @@ server.registerTool(
             timeout_seconds: z
               .number()
               .optional()
-              .describe("Per-subtask timeout (default: 120)"),
+              .describe("Per-subtask timeout (default: 240)"),
             depends_on: z
               .array(z.string())
               .optional()

@@ -3,7 +3,6 @@ import { recordUsage, getQuotaStatus } from "../tracking/usage-store.js";
 import type { ServiceType } from "../config/models.js";
 import { classifyTask } from "./classify.js";
 import { routeTask } from "./route.js";
-import type { Complexity } from "./classify.js";
 
 export interface DelegationResult {
   success: boolean;
@@ -599,7 +598,7 @@ export async function parallelDelegate(
           assignment.model,
           assignment.service,
           {
-            timeoutMs: subtask.timeoutMs ?? 120_000,
+            timeoutMs: subtask.timeoutMs ?? 240_000,
             fallbackModel: assignment.fallbackModel,
             fallbackService: assignment.fallbackService,
           }
