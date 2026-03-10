@@ -103,6 +103,12 @@ export function shellEscape(s: string): string {
 }
 
 /**
+ * Max bytes for content piped via `sh -c "printf '%s' $escaped | ..."`.
+ * Stay well under macOS ARG_MAX (~262144) to avoid silent failures.
+ */
+export const MAX_SHELL_PIPE_BYTES = 200_000;
+
+/**
  * Call a local Ollama model. Returns the text response.
  * Used for task decomposition (parallel_delegate) and context compression (optimize_context).
  */
@@ -140,7 +146,7 @@ export async function compressWithDistill(
   const tools = options.predetectedTools ?? await detectAvailableTools();
 
   // Prefer Distill CLI (purpose-built for this)
-  if (tools.distill) {
+  if (tools.distill && content.length < MAX_SHELL_PIPE_BYTES) {
     // Distill reads from stdin, so we use sh -c to pipe
     const escapedContent = shellEscape(content);
     const escapedQuery = shellEscape(query);

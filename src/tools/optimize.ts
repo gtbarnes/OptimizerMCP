@@ -1,4 +1,4 @@
-import { runCommand, detectAvailableTools, compressWithDistill, shellEscape } from "../utils/subprocess.js";
+import { runCommand, detectAvailableTools, compressWithDistill, shellEscape, MAX_SHELL_PIPE_BYTES } from "../utils/subprocess.js";
 
 export interface OptimizationResult {
   optimized_content: string;
@@ -157,6 +157,7 @@ async function getSymdexInfo(filePaths: string[], cwd: string): Promise<string |
 }
 
 async function compressWithRtk(content: string, _cwd: string): Promise<string | null> {
+  if (content.length >= MAX_SHELL_PIPE_BYTES) return null; // too large for shell arg
   try {
     // RTK filters piped input — pipe content through rtk via shell
     const escaped = shellEscape(content);
@@ -175,6 +176,7 @@ async function compressWithRtk(content: string, _cwd: string): Promise<string | 
 }
 
 async function compressWithTokf(content: string, _cwd: string): Promise<string | null> {
+  if (content.length >= MAX_SHELL_PIPE_BYTES) return null; // too large for shell arg
   try {
     // tokf filters piped input — pipe content through tokf via shell
     const escaped = shellEscape(content);

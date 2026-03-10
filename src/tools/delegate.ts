@@ -94,7 +94,7 @@ async function delegateToClaude(
   timeoutMs: number
 ): Promise<DelegationResult> {
   console.error(`[OptimizerMCP] Delegating to Claude: ${model}`);
-  const args = ["-p", "--output-format", "text", "--model", model, prompt];
+  const args = ["-p", "--output-format", "text", "--model", model, "--", prompt];
   const result = await runCommand("claude", args, { cwd, timeoutMs });
 
   if (result.exitCode !== 0) {
@@ -126,7 +126,7 @@ async function delegateToCodex(
   timeoutMs: number
 ): Promise<DelegationResult> {
   console.error(`[OptimizerMCP] Delegating to Codex: ${model}`);
-  const args = ["exec", "--model", model, "--full-auto", prompt];
+  const args = ["exec", "--model", model, "--full-auto", "--", prompt];
   const result = await runCommand("codex", args, { cwd, timeoutMs });
 
   if (result.exitCode !== 0) {
@@ -190,7 +190,7 @@ async function delegateToZaiViaOpenCode(
   const bareModel = model.replace(/^(zai|zhipuai-coding-plan)\//, "");
   const qualifiedModel = `zhipuai-coding-plan/${bareModel}`;
   console.error(`[OptimizerMCP] Delegating to Z.AI via OpenCode: ${qualifiedModel}`);
-  const args = ["run", "-m", qualifiedModel, prompt];
+  const args = ["run", "-m", qualifiedModel, "--", prompt];
   const result = await runCommand("opencode", args, { cwd, timeoutMs });
 
   if (result.exitCode !== 0) {
@@ -289,7 +289,7 @@ async function delegateToZaiViaClaude(
   cwd: string,
   timeoutMs: number
 ): Promise<DelegationResult> {
-  const args = ["-p", "--output-format", "text", "--model", model, prompt];
+  const args = ["-p", "--output-format", "text", "--model", model, "--", prompt];
   const result = await runCommand("claude", args, { cwd, timeoutMs });
 
   if (result.exitCode !== 0) {
@@ -373,6 +373,8 @@ async function autoSplitTask(task: string): Promise<SubtaskInput[] | null> {
 
   try {
     let jsonStr = result.output;
+    // Strip qwen3-style <think>...</think> tags before parsing
+    jsonStr = jsonStr.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
     const jsonMatch = jsonStr.match(/\[[\s\S]*\]/);
     if (jsonMatch) jsonStr = jsonMatch[0];
 
