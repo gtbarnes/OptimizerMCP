@@ -1,19 +1,55 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# OptimizerMCP Installer
-# Installs the MCP server, configures Codex, and installs all optimization tools.
+# OptimizerMCP Installer / Updater
+# Fresh install OR update an existing installation — safe to re-run at any time.
 #
-# Usage (from anywhere):
+# Fresh install:
 #   git clone https://github.com/gtbarnes/OptimizerMCP.git ~/OptimizerMCP && ~/OptimizerMCP/install.sh
+#
+# Update existing:
+#   ~/OptimizerMCP/install.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEX_CONFIG_DIR="$HOME/.codex"
 CODEX_CONFIG="$CODEX_CONFIG_DIR/config.toml"
 
-echo "=== OptimizerMCP Installer ==="
+# ── Detect install vs update ──────────────────────────────────────────
+IS_UPDATE=false
+if [ -f "$SCRIPT_DIR/build/index.js" ] && grep -q 'mcp_servers.optimizer' "$CODEX_CONFIG" 2>/dev/null; then
+  IS_UPDATE=true
+fi
+
+if $IS_UPDATE; then
+  echo "=== OptimizerMCP Updater ==="
+  echo "Existing installation detected — updating..."
+else
+  echo "=== OptimizerMCP Installer ==="
+fi
 echo "Project dir: $SCRIPT_DIR"
 echo ""
+
+# ── Step 0 (update only): Pull latest from GitHub ────────────────────
+
+if $IS_UPDATE; then
+  echo "[0/7] Pulling latest changes..."
+  cd "$SCRIPT_DIR"
+  if git rev-parse --is-inside-work-tree &>/dev/null; then
+    BEFORE=$(git rev-parse HEAD)
+    git pull --ff-only 2>&1 || {
+      echo "  WARNING: git pull failed (you may have local changes). Continuing with current code."
+    }
+    AFTER=$(git rev-parse HEAD)
+    if [ "$BEFORE" = "$AFTER" ]; then
+      echo "  Already up-to-date ✓"
+    else
+      echo "  Updated to $(git log -1 --format='%h %s') ✓"
+    fi
+  else
+    echo "  Not a git repo — skipping pull"
+  fi
+  echo ""
+fi
 
 # ── Step 1: Check prerequisites ──────────────────────────────────────
 
@@ -195,11 +231,10 @@ echo "  Added [mcp_servers.optimizer] to $CODEX_CONFIG ✓"
 echo ""
 echo "[6/7] Installing AGENTS.md..."
 if [ -f "$CODEX_CONFIG_DIR/AGENTS.md" ]; then
-  if grep -q 'parallel_delegate' "$CODEX_CONFIG_DIR/AGENTS.md" 2>/dev/null; then
-    echo "  AGENTS.md already up-to-date — skipping"
-  elif grep -q 'classify_task' "$CODEX_CONFIG_DIR/AGENTS.md" 2>/dev/null; then
+  # Check if existing file is ours (contains OptimizerMCP references)
+  if grep -q 'classify_task\|OptimizerMCP' "$CODEX_CONFIG_DIR/AGENTS.md" 2>/dev/null; then
     cp "$SCRIPT_DIR/AGENTS.md" "$CODEX_CONFIG_DIR/AGENTS.md"
-    echo "  AGENTS.md updated with parallel delegation instructions ✓"
+    echo "  AGENTS.md updated from repo ✓"
   else
     echo "  WARNING: ~/.codex/AGENTS.md exists with other content."
     echo "  You may want to merge from: $SCRIPT_DIR/AGENTS.md"
@@ -223,7 +258,11 @@ fi
 # ── Done ─────────────────────────────────────────────────────────────
 
 echo ""
-echo "=== Installation complete ==="
+if $IS_UPDATE; then
+  echo "=== Update complete ==="
+else
+  echo "=== Installation complete ==="
+fi
 echo ""
 echo "10 MCP tools available:"
 echo "  classify_task, recommend_model, check_quota, delegate_task,"
@@ -237,5 +276,5 @@ echo "  RTK / tokf (60-90% CLI output compression)"
 echo "  SymDex (97% savings on code lookups)"
 echo "  OpenCode (Z.AI delegation)"
 echo ""
-echo "To update later:  cd $SCRIPT_DIR && ./update.sh"
+echo "To update later:  $SCRIPT_DIR/install.sh"
 echo "To verify:        start Codex and ask 'check_available_tools'"
