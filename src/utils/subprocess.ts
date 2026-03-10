@@ -1,7 +1,30 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { homedir } from "node:os";
+import { existsSync } from "node:fs";
 
 const execFileAsync = promisify(execFile);
+
+// ── Expand PATH for MCP subprocess environments ──────────────────────
+// When Codex (or any MCP host) spawns us, PATH is often minimal.
+// We add well-known tool locations so `which` can find everything.
+const EXTRA_PATHS = [
+  "/opt/homebrew/bin",           // macOS Homebrew (Apple Silicon)
+  "/usr/local/bin",              // macOS Homebrew (Intel) / Linux standard
+  `${homedir()}/.cargo/bin`,     // Rust / cargo (RTK, tokf)
+  `${homedir()}/.local/bin`,     // pip --user installs (SymDex)
+  `${homedir()}/go/bin`,         // Go binaries
+  "/usr/local/go/bin",           // Go standard
+  `${homedir()}/.npm-global/bin`, // npm global (alternate prefix)
+];
+
+const currentPath = process.env.PATH ?? "";
+const pathsToAdd = EXTRA_PATHS.filter(
+  (p) => !currentPath.includes(p) && existsSync(p)
+);
+if (pathsToAdd.length > 0) {
+  process.env.PATH = [...pathsToAdd, currentPath].join(":");
+}
 
 export interface SubprocessResult {
   stdout: string;
