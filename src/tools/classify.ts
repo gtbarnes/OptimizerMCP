@@ -250,8 +250,6 @@ function computeAgenticScore(text: string): number {
 // ── UI / Visual Detection ─────────────────────────────────────────────
 
 function detectUiRelated(text: string): boolean {
-  const lower = text.toLowerCase();
-
   // Direct UI/visual keywords
   const uiPatterns = [
     /\bui\b/i,

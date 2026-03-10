@@ -97,6 +97,11 @@ export async function detectAvailableTools(): Promise<{
   return { claude, codex, opencode, rtk, tokf, symdex, codebaseMemory, ollama, distill };
 }
 
+/** Escape content for safe use in a shell single-quote context */
+function shellEscape(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
 /**
  * Call a local Ollama model. Returns the text response.
  * Used for task decomposition (parallel_delegate) and context compression (optimize_context).
@@ -137,9 +142,11 @@ export async function compressWithDistill(
   // Prefer Distill CLI (purpose-built for this)
   if (tools.distill) {
     // Distill reads from stdin, so we use sh -c to pipe
+    const escapedContent = shellEscape(content);
+    const escapedQuery = shellEscape(query);
     const result = await runCommand(
       "sh",
-      ["-c", `echo ${JSON.stringify(content)} | distill ${JSON.stringify(query)}`],
+      ["-c", `printf '%s' ${escapedContent} | distill ${escapedQuery}`],
       { timeoutMs }
     );
     if (result.exitCode === 0 && result.stdout.trim()) {

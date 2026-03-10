@@ -52,6 +52,11 @@ export function getModelRegistry(): ModelRegistry {
   return _registry;
 }
 
+/** Invalidate cached registry so next getModelRegistry() re-reads from disk. */
+export function invalidateRegistryCache(): void {
+  _registry = null;
+}
+
 export function getModel(id: string): ModelDef | undefined {
   return getModelRegistry().models.find((m) => m.id === id);
 }

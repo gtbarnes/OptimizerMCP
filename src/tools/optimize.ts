@@ -24,9 +24,9 @@ function estimateTokens(text: string): number {
 
 export async function optimizeContext(
   input: string,
-  options: { filePaths?: string[]; cwd?: string } = {}
+  options: { filePaths?: string[]; cwd?: string; contentType?: string } = {}
 ): Promise<OptimizationResult> {
-  const { cwd = process.cwd() } = options;
+  const { cwd = process.cwd(), contentType } = options;
   const tools = await getTools();
   const toolsUsed: string[] = [];
   const suggestions: string[] = [];
@@ -55,14 +55,18 @@ export async function optimizeContext(
     }
   }
 
+  // Determine if content should be treated as CLI output
+  const isCliOutput = contentType === "cli_output" || contentType === "logs" ||
+    (contentType !== "code" && contentType !== "text" && looksLikeCliOutput(content));
+
   // Apply RTK-style compression for CLI output
-  if (tools.rtk && looksLikeCliOutput(content)) {
+  if (tools.rtk && isCliOutput) {
     const compressed = await compressWithRtk(content, cwd);
     if (compressed && estimateTokens(compressed) < estimateTokens(content)) {
       content = compressed;
       toolsUsed.push("rtk");
     }
-  } else if (tools.tokf && looksLikeCliOutput(content)) {
+  } else if (tools.tokf && isCliOutput) {
     // tokf as fallback
     const compressed = await compressWithTokf(content, cwd);
     if (compressed && estimateTokens(compressed) < estimateTokens(content)) {
@@ -72,7 +76,7 @@ export async function optimizeContext(
   }
 
   // Semantic compression via Distill or Ollama (best results for CLI output)
-  if ((tools.distill || tools.ollama) && looksLikeCliOutput(content) && estimateTokens(content) > 200) {
+  if ((tools.distill || tools.ollama) && isCliOutput && estimateTokens(content) > 200) {
     const compressed = await compressWithDistill(content, "extract key information, errors, and results");
     if (compressed.success && estimateTokens(compressed.output) < estimateTokens(content)) {
       content = compressed.output;
@@ -149,11 +153,14 @@ async function getSymdexInfo(filePaths: string[], cwd: string): Promise<string |
 
 async function compressWithRtk(content: string, _cwd: string): Promise<string | null> {
   try {
-    // RTK can filter piped input
-    const result = await runCommand("rtk", ["proxy", "cat"], {
-      timeoutMs: 5_000,
-    });
-    if (result.exitCode === 0) {
+    // RTK filters piped input — pipe content through rtk via shell
+    const escaped = shellEscape(content);
+    const result = await runCommand(
+      "sh",
+      ["-c", `printf '%s' ${escaped} | rtk proxy cat`],
+      { timeoutMs: 10_000 }
+    );
+    if (result.exitCode === 0 && result.stdout.trim()) {
       return result.stdout.trim();
     }
   } catch {
@@ -164,16 +171,25 @@ async function compressWithRtk(content: string, _cwd: string): Promise<string | 
 
 async function compressWithTokf(content: string, _cwd: string): Promise<string | null> {
   try {
-    const result = await runCommand("tokf", ["run", "cat"], {
-      timeoutMs: 5_000,
-    });
-    if (result.exitCode === 0) {
+    // tokf filters piped input — pipe content through tokf via shell
+    const escaped = shellEscape(content);
+    const result = await runCommand(
+      "sh",
+      ["-c", `printf '%s' ${escaped} | tokf run cat`],
+      { timeoutMs: 10_000 }
+    );
+    if (result.exitCode === 0 && result.stdout.trim()) {
       return result.stdout.trim();
     }
   } catch {
     // Fall through
   }
   return null;
+}
+
+/** Escape content for safe use in a shell single-quote context */
+function shellEscape(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
 function applyBasicCompression(text: string): string {

@@ -25,7 +25,7 @@ export async function delegateTask(
     fallbackService?: ServiceType;
   } = {}
 ): Promise<DelegationResult> {
-  const { cwd = process.cwd(), timeoutMs = 120_000 } = options;
+  const { cwd = process.cwd(), timeoutMs = 240_000 } = options;
 
   let result = await dispatchToService(prompt, targetModel, targetService, cwd, timeoutMs);
 
@@ -470,7 +470,7 @@ export async function parallelDelegate(
   let autoSplitUsed = false;
 
   // Auto-split mode: use Ollama to decompose a single task
-  if (input.task && input.autoSplit !== false && (!subtasks || subtasks.length === 0)) {
+  if (input.task && input.autoSplit === true && (!subtasks || subtasks.length === 0)) {
     console.error(`[OptimizerMCP] Auto-splitting task via Ollama...`);
     const split = await autoSplitTask(input.task);
     if (split) {

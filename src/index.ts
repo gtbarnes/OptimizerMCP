@@ -10,7 +10,7 @@ import { checkQuota } from "./tools/quota.js";
 import { delegateTask, parallelDelegate } from "./tools/delegate.js";
 import { optimizeContext, getProjectSummary } from "./tools/optimize.js";
 import { getQuotaStatus, recordUsage } from "./tracking/usage-store.js";
-import { getModelRegistry } from "./config/models.js";
+import { getModelRegistry, invalidateRegistryCache } from "./config/models.js";
 import { detectAvailableTools } from "./utils/subprocess.js";
 
 // Display-friendly service names for user-facing output
@@ -252,10 +252,14 @@ server.registerTool(
         .array(z.string())
         .optional()
         .describe("File paths to get optimized summaries of instead of full content"),
+      content_type: z
+        .enum(["cli_output", "code", "logs", "text", "auto"])
+        .optional()
+        .describe("Hint about content type for better compression (default: auto-detect)"),
     },
   },
-  async ({ content, file_paths }) => {
-    const result = await optimizeContext(content, { filePaths: file_paths });
+  async ({ content, file_paths, content_type }) => {
+    const result = await optimizeContext(content, { filePaths: file_paths, contentType: content_type });
 
     return {
       content: [
@@ -328,9 +332,9 @@ server.registerTool(
         .describe("List of capabilities (coding, reasoning, multi-file, etc.)"),
       cost_weight: z
         .number()
-        .min(1)
+        .min(0)
         .max(20)
-        .describe("Relative cost weight (1=cheapest, 10=most expensive)"),
+        .describe("Relative cost weight (0=free tier, 10=most expensive)"),
       context_window: z
         .number()
         .describe("Context window size in tokens"),
@@ -364,6 +368,9 @@ server.registerTool(
     }
 
     writeFileSync(configPath, JSON.stringify(registry, null, 2) + "\n");
+
+    // Invalidate the in-memory cache so subsequent reads pick up the change
+    invalidateRegistryCache();
 
     return {
       content: [
