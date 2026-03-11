@@ -14,10 +14,12 @@ import { invalidateRegistryCache } from "./config/models.js";
 import { detectAvailableTools } from "./utils/subprocess.js";
 import { discoverFreeModels, invalidateFreeModelCache } from "./tools/free-models.js";
 
-// Display-friendly service names for user-facing output
+// Display-friendly service names for user-facing output.
+// NOTE: Output must be valid enum values for delegate_task/parallel_delegate
+// input schemas. "zhipuai" is accepted (normalized to "zai" in handlers).
+// "opencode" stays as-is — the "(free)" annotation lives in routing reasoning.
 function displayService(service: string): string {
   if (service === "zai") return "zhipuai";
-  if (service === "opencode") return "opencode (free)";
   return service;
 }
 
