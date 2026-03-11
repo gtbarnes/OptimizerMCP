@@ -77,6 +77,7 @@ export async function runCommandStreaming(
     cwd?: string;
     activityTimeoutMs?: number;  // kill after N ms of no output (default: 60s)
     maxTotalMs?: number;         // hard cap regardless of activity (default: 600s)
+    maxBufferBytes?: number;     // cap buffer size to prevent OOM (default: 10MB)
     onOutput?: (chunk: string, stream: "stdout" | "stderr") => void;
     env?: Record<string, string>;
   } = {}
@@ -85,6 +86,7 @@ export async function runCommandStreaming(
     cwd,
     activityTimeoutMs = 60_000,
     maxTotalMs = 600_000,
+    maxBufferBytes = 10 * 1024 * 1024, // 10MB — matches runCommand's maxBuffer
     onOutput,
     env,
   } = options;
@@ -98,6 +100,8 @@ export async function runCommandStreaming(
 
     let stdoutBuf = "";
     let stderrBuf = "";
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
     let lastActivity = Date.now();
     const startTime = Date.now();
     let resolved = false;
@@ -112,14 +116,32 @@ export async function runCommandStreaming(
 
     child.stdout.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
-      stdoutBuf += text;
+      // Cap buffer to prevent OOM; keep tracking activity regardless
+      if (!stdoutTruncated) {
+        if (stdoutBuf.length + text.length > maxBufferBytes) {
+          stdoutBuf += text.slice(0, maxBufferBytes - stdoutBuf.length);
+          stdoutBuf += "\n[output truncated at 10MB]";
+          stdoutTruncated = true;
+        } else {
+          stdoutBuf += text;
+        }
+      }
       lastActivity = Date.now();
       try { onOutput?.(text, "stdout"); } catch { /* progress callback failure must not crash the server */ }
     });
 
     child.stderr.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
-      stderrBuf += text;
+      // Cap buffer to prevent OOM; keep tracking activity regardless
+      if (!stderrTruncated) {
+        if (stderrBuf.length + text.length > maxBufferBytes) {
+          stderrBuf += text.slice(0, maxBufferBytes - stderrBuf.length);
+          stderrBuf += "\n[stderr truncated at 10MB]";
+          stderrTruncated = true;
+        } else {
+          stderrBuf += text;
+        }
+      }
       lastActivity = Date.now();
       try { onOutput?.(text, "stderr"); } catch { /* progress callback failure must not crash the server */ }
     });
