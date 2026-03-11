@@ -220,7 +220,7 @@ server.registerTool(
         .min(1)
         .max(600)
         .optional()
-        .describe("Timeout in seconds, 1-600 (default: 240)"),
+        .describe("Activity timeout: seconds of silence before killing the subprocess, 1-600 (default: 60). Task stays alive as long as it produces output, with a 10-minute hard cap."),
     },
   },
   async ({ prompt, target_model, target_service, fallback_model, fallback_service, timeout_seconds }) => {
@@ -228,9 +228,13 @@ server.registerTool(
     const normalizedService = (target_service === "zhipuai" ? "zai" : target_service) as "codex" | "claude" | "zai" | "opencode";
     const normalizedFallback = (fallback_service === "zhipuai" ? "zai" : fallback_service) as "codex" | "claude" | "zai" | "opencode" | undefined;
     const result = await delegateTask(prompt, target_model, normalizedService, {
-      timeoutMs: (timeout_seconds ?? 240) * 1000,
+      timeoutMs: (timeout_seconds ?? 60) * 1000,    // activity timeout (silence = dead)
+      maxTotalMs: 600_000,                           // 10 minute hard cap
       fallbackModel: fallback_model,
       fallbackService: normalizedFallback,
+      onProgress: (message) => {
+        server.sendLoggingMessage({ level: "info", logger: "optimizer-mcp", data: message });
+      },
     });
 
     const header = `[Delegated to ${result.model_used}@${displayService(result.service_used)} | ~${result.estimated_tokens} tokens]`;
@@ -585,6 +589,9 @@ server.registerTool(
       autoSplit: auto_split,
       strategy: strategy ?? "spread",
       globalTimeoutMs: (global_timeout_seconds ?? 300) * 1000,
+      onProgress: (message) => {
+        server.sendLoggingMessage({ level: "info", logger: "optimizer-mcp", data: message });
+      },
     });
 
     // Transform internal service names for user-facing output

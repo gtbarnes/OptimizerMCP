@@ -1,4 +1,4 @@
-import { runCommand, commandExists, callOllama } from "../utils/subprocess.js";
+import { runCommand, runCommandStreaming, commandExists, callOllama } from "../utils/subprocess.js";
 import { recordUsage, getQuotaStatus } from "../tracking/usage-store.js";
 import type { ServiceType } from "../config/models.js";
 import { classifyTask } from "./classify.js";
@@ -29,33 +29,65 @@ export interface DelegationResult {
   estimated_tokens: number;
 }
 
+/** Callback for emitting progress during delegation. */
+export type ProgressCallback = (message: string) => void;
+
+/**
+ * Helper: creates a throttled output tracker that reports progress no more
+ * than once every `intervalMs` milliseconds.
+ */
+function createOutputTracker(onProgress: ProgressCallback | undefined, label: string, intervalMs = 5_000) {
+  let totalBytes = 0;
+  const startTime = Date.now();
+  let lastReport = 0;
+
+  return {
+    onChunk(chunk: string, _stream: "stdout" | "stderr") {
+      totalBytes += chunk.length;
+      const now = Date.now();
+      if (onProgress && now - lastReport > intervalMs) {
+        lastReport = now;
+        const elapsed = Math.round((now - startTime) / 1000);
+        const kb = (totalBytes / 1024).toFixed(1);
+        onProgress(`[${label}] Receiving output (${kb}KB, ${elapsed}s elapsed)...`);
+      }
+    },
+    summarize(): string {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      return `${(totalBytes / 1024).toFixed(1)}KB in ${elapsed}s`;
+    },
+  };
+}
+
 export async function delegateTask(
   prompt: string,
   targetModel: string,
   targetService: ServiceType,
   options: {
     cwd?: string;
-    timeoutMs?: number;
+    timeoutMs?: number;      // activity timeout (default: 60s of silence)
+    maxTotalMs?: number;     // hard cap (default: 600s)
     fallbackModel?: string;
     fallbackService?: ServiceType;
+    onProgress?: ProgressCallback;
   } = {}
 ): Promise<DelegationResult> {
-  const { cwd = process.cwd(), timeoutMs = 240_000 } = options;
+  const { cwd = process.cwd(), timeoutMs = 60_000, maxTotalMs = 600_000, onProgress } = options;
 
-  let result = await dispatchToService(prompt, targetModel, targetService, cwd, timeoutMs);
+  onProgress?.(`Delegating to ${targetModel}@${targetService}...`);
+  let result = await dispatchToService(prompt, targetModel, targetService, cwd, timeoutMs, maxTotalMs, onProgress);
 
   // Auto-fallback: if primary failed and we have a fallback, retry
   if (!result.success && options.fallbackModel && options.fallbackService) {
     const primaryError = result.error;
+    onProgress?.(`Primary failed, trying fallback ${options.fallbackModel}@${options.fallbackService}...`);
     result = await dispatchToService(
-      prompt, options.fallbackModel, options.fallbackService, cwd, timeoutMs
+      prompt, options.fallbackModel, options.fallbackService, cwd, timeoutMs, maxTotalMs, onProgress
     );
     if (result.success) {
-      // Annotate that we used the fallback
       result.output = `[Fallback: ${targetModel}@${targetService} failed, used ${options.fallbackModel}@${options.fallbackService}]\n\n` +
         result.output;
     } else {
-      // Both failed — include both errors
       result.error = `Primary (${targetModel}@${targetService}): ${primaryError}\n` +
         `Fallback (${options.fallbackModel}@${options.fallbackService}): ${result.error}`;
     }
@@ -73,6 +105,7 @@ export async function delegateTask(
   });
 
   result.estimated_tokens = estimatedInputTokens + estimatedOutputTokens;
+  onProgress?.(`Delegation complete (${result.model_used}@${result.service_used}, ~${result.estimated_tokens} tokens)`);
 
   return result;
 }
@@ -82,17 +115,19 @@ async function dispatchToService(
   model: string,
   service: ServiceType,
   cwd: string,
-  timeoutMs: number
+  activityTimeoutMs: number,
+  maxTotalMs: number,
+  onProgress?: ProgressCallback,
 ): Promise<DelegationResult> {
   switch (service) {
     case "claude":
-      return await delegateToClaude(prompt, model, cwd, timeoutMs);
+      return await delegateToClaude(prompt, model, cwd, activityTimeoutMs, maxTotalMs, onProgress);
     case "codex":
-      return await delegateToCodex(prompt, model, cwd, timeoutMs);
+      return await delegateToCodex(prompt, model, cwd, activityTimeoutMs, maxTotalMs, onProgress);
     case "zai":
-      return await delegateToZai(prompt, model, cwd, timeoutMs);
+      return await delegateToZai(prompt, model, cwd, activityTimeoutMs, maxTotalMs, onProgress);
     case "opencode":
-      return await delegateToOpenCode(prompt, model, cwd, timeoutMs);
+      return await delegateToOpenCode(prompt, model, cwd, activityTimeoutMs, maxTotalMs, onProgress);
     default:
       return {
         success: false,
@@ -109,14 +144,24 @@ async function delegateToClaude(
   prompt: string,
   model: string,
   cwd: string,
-  timeoutMs: number
+  activityTimeoutMs: number,
+  maxTotalMs: number,
+  onProgress?: ProgressCallback,
 ): Promise<DelegationResult> {
   console.error(`[OptimizerMCP] Delegating to Claude: ${model}`);
+  onProgress?.(`[claude] Starting ${model}...`);
   const args = ["-p", "--output-format", "text", "--model", model, "--", prompt];
-  const result = await runCommand("claude", args, { cwd, timeoutMs });
+  const tracker = createOutputTracker(onProgress, `claude/${model}`);
+  const result = await runCommandStreaming("claude", args, {
+    cwd,
+    activityTimeoutMs,
+    maxTotalMs,
+    onOutput: tracker.onChunk,
+  });
 
   if (result.exitCode !== 0) {
     console.error(`[OptimizerMCP] Claude delegation failed (exit ${result.exitCode})`);
+    onProgress?.(`[claude] Failed (exit ${result.exitCode})`);
     return {
       success: false,
       output: "",
@@ -128,6 +173,7 @@ async function delegateToClaude(
   }
 
   console.error(`[OptimizerMCP] Claude delegation succeeded (${result.stdout.length} chars)`);
+  onProgress?.(`[claude] Complete (${tracker.summarize()})`);
   return {
     success: true,
     output: result.stdout.trim(),
@@ -141,13 +187,23 @@ async function delegateToCodex(
   prompt: string,
   model: string,
   cwd: string,
-  timeoutMs: number
+  activityTimeoutMs: number,
+  maxTotalMs: number,
+  onProgress?: ProgressCallback,
 ): Promise<DelegationResult> {
   console.error(`[OptimizerMCP] Delegating to Codex: ${model}`);
+  onProgress?.(`[codex] Starting ${model}...`);
   const args = ["exec", "--model", model, "--full-auto", "--", prompt];
-  const result = await runCommand("codex", args, { cwd, timeoutMs });
+  const tracker = createOutputTracker(onProgress, `codex/${model}`);
+  const result = await runCommandStreaming("codex", args, {
+    cwd,
+    activityTimeoutMs,
+    maxTotalMs,
+    onOutput: tracker.onChunk,
+  });
 
   if (result.exitCode !== 0) {
+    onProgress?.(`[codex] Failed (exit ${result.exitCode})`);
     return {
       success: false,
       output: "",
@@ -158,6 +214,7 @@ async function delegateToCodex(
     };
   }
 
+  onProgress?.(`[codex] Complete (${tracker.summarize()})`);
   return {
     success: true,
     output: result.stdout.trim(),
@@ -177,41 +234,54 @@ async function delegateToZai(
   prompt: string,
   model: string,
   cwd: string,
-  timeoutMs: number
+  activityTimeoutMs: number,
+  maxTotalMs: number,
+  onProgress?: ProgressCallback,
 ): Promise<DelegationResult> {
   // 1. Try OpenCode CLI (preferred path)
   const hasOpenCode = await commandExists("opencode");
   if (hasOpenCode) {
-    const result = await delegateToZaiViaOpenCode(prompt, model, cwd, timeoutMs);
+    const result = await delegateToZaiViaOpenCode(prompt, model, cwd, activityTimeoutMs, maxTotalMs, onProgress);
     if (result.success) return result;
+    onProgress?.(`[zai] OpenCode failed, trying next cascade step...`);
     // If OpenCode failed (e.g. not authenticated), fall through
   }
 
   // 2. Try direct API if key is available
   const apiKey = process.env.ZAI_API_KEY ?? process.env.ZHIPU_API_KEY;
   if (apiKey) {
-    return await delegateToZaiApi(prompt, model, apiKey, timeoutMs);
+    return await delegateToZaiApi(prompt, model, apiKey, activityTimeoutMs, maxTotalMs, onProgress);
   }
 
   // 3. Fallback: try Claude Code with Z.AI model names
-  return await delegateToZaiViaClaude(prompt, model, cwd, timeoutMs);
+  return await delegateToZaiViaClaude(prompt, model, cwd, activityTimeoutMs, maxTotalMs, onProgress);
 }
 
 async function delegateToZaiViaOpenCode(
   prompt: string,
   model: string,
   cwd: string,
-  timeoutMs: number
+  activityTimeoutMs: number,
+  maxTotalMs: number,
+  onProgress?: ProgressCallback,
 ): Promise<DelegationResult> {
   // OpenCode provider: use "zhipuai-coding-plan/<model>" (the Zhipu AI Coding Plan)
   // Strip any existing provider prefix before adding the correct one
   const bareModel = model.replace(/^(zai|zhipuai-coding-plan)\//, "");
   const qualifiedModel = `zhipuai-coding-plan/${bareModel}`;
   console.error(`[OptimizerMCP] Delegating to Z.AI via OpenCode: ${qualifiedModel}`);
+  onProgress?.(`[zai/opencode] Starting ${qualifiedModel}...`);
   const args = ["run", "-m", qualifiedModel, "--", prompt];
-  const result = await runCommand("opencode", args, { cwd, timeoutMs });
+  const tracker = createOutputTracker(onProgress, `zai/${bareModel}`);
+  const result = await runCommandStreaming("opencode", args, {
+    cwd,
+    activityTimeoutMs,
+    maxTotalMs,
+    onOutput: tracker.onChunk,
+  });
 
   if (result.exitCode !== 0) {
+    onProgress?.(`[zai/opencode] Failed (exit ${result.exitCode})`);
     return {
       success: false,
       output: "",
@@ -222,6 +292,7 @@ async function delegateToZaiViaOpenCode(
     };
   }
 
+  onProgress?.(`[zai/opencode] Complete (${tracker.summarize()})`);
   return {
     success: true,
     output: cleanOpenCodeOutput(result.stdout),
@@ -235,8 +306,11 @@ async function delegateToZaiApi(
   prompt: string,
   model: string,
   apiKey: string,
-  timeoutMs: number
+  activityTimeoutMs: number,
+  maxTotalMs: number,
+  onProgress?: ProgressCallback,
 ): Promise<DelegationResult> {
+  onProgress?.(`[zai/api] Calling Z.AI API with ${model}...`);
   const body = JSON.stringify({
     model,
     max_tokens: 4096,
@@ -252,9 +326,15 @@ async function delegateToZaiApi(
     "-d", body,
   ];
 
-  const result = await runCommand("curl", args, { timeoutMs });
+  const tracker = createOutputTracker(onProgress, `zai-api/${model}`);
+  const result = await runCommandStreaming("curl", args, {
+    activityTimeoutMs,
+    maxTotalMs,
+    onOutput: tracker.onChunk,
+  });
 
   if (result.exitCode !== 0) {
+    onProgress?.(`[zai/api] Failed (exit ${result.exitCode})`);
     return {
       success: false,
       output: "",
@@ -268,6 +348,7 @@ async function delegateToZaiApi(
   try {
     const response = JSON.parse(result.stdout);
     if (response.error) {
+      onProgress?.(`[zai/api] API error: ${response.error.message ?? "unknown"}`);
       return {
         success: false,
         output: "",
@@ -282,6 +363,7 @@ async function delegateToZaiApi(
       ?.map((c: { type: string; text?: string }) => c.text ?? "")
       .join("") ?? "";
 
+    onProgress?.(`[zai/api] Complete (${tracker.summarize()})`);
     return {
       success: true,
       output: text,
@@ -290,6 +372,7 @@ async function delegateToZaiApi(
       estimated_tokens: 0,
     };
   } catch {
+    onProgress?.(`[zai/api] Failed to parse response`);
     return {
       success: false,
       output: result.stdout,
@@ -305,12 +388,22 @@ async function delegateToZaiViaClaude(
   prompt: string,
   model: string,
   cwd: string,
-  timeoutMs: number
+  activityTimeoutMs: number,
+  maxTotalMs: number,
+  onProgress?: ProgressCallback,
 ): Promise<DelegationResult> {
+  onProgress?.(`[zai/claude-fallback] Starting ${model} via Claude CLI...`);
   const args = ["-p", "--output-format", "text", "--model", model, "--", prompt];
-  const result = await runCommand("claude", args, { cwd, timeoutMs });
+  const tracker = createOutputTracker(onProgress, `zai-claude/${model}`);
+  const result = await runCommandStreaming("claude", args, {
+    cwd,
+    activityTimeoutMs,
+    maxTotalMs,
+    onOutput: tracker.onChunk,
+  });
 
   if (result.exitCode !== 0) {
+    onProgress?.(`[zai/claude-fallback] Failed (exit ${result.exitCode})`);
     return {
       success: false,
       output: "",
@@ -323,6 +416,7 @@ async function delegateToZaiViaClaude(
     };
   }
 
+  onProgress?.(`[zai/claude-fallback] Complete (${tracker.summarize()})`);
   return {
     success: true,
     output: result.stdout.trim(),
@@ -336,14 +430,24 @@ async function delegateToOpenCode(
   prompt: string,
   model: string,
   cwd: string,
-  timeoutMs: number
+  activityTimeoutMs: number,
+  maxTotalMs: number,
+  onProgress?: ProgressCallback,
 ): Promise<DelegationResult> {
   // model is already a qualifiedName like "opencode/big-pickle"
   console.error(`[OptimizerMCP] Delegating to free model via OpenCode: ${model}`);
+  onProgress?.(`[opencode] Starting free model ${model}...`);
   const args = ["run", "-m", model, "--", prompt];
-  const result = await runCommand("opencode", args, { cwd, timeoutMs });
+  const tracker = createOutputTracker(onProgress, `opencode/${model}`);
+  const result = await runCommandStreaming("opencode", args, {
+    cwd,
+    activityTimeoutMs,
+    maxTotalMs,
+    onOutput: tracker.onChunk,
+  });
 
   if (result.exitCode !== 0) {
+    onProgress?.(`[opencode] Failed (exit ${result.exitCode})`);
     return {
       success: false,
       output: "",
@@ -354,6 +458,7 @@ async function delegateToOpenCode(
     };
   }
 
+  onProgress?.(`[opencode] Complete (${tracker.summarize()})`);
   return {
     success: true,
     output: cleanOpenCodeOutput(result.stdout),
@@ -520,9 +625,10 @@ export async function parallelDelegate(
     autoSplit?: boolean;
     strategy?: Strategy;
     globalTimeoutMs?: number;
+    onProgress?: ProgressCallback;
   }
 ): Promise<ParallelDelegateResult> {
-  const { strategy = "spread", globalTimeoutMs = 300_000 } = input;
+  const { strategy = "spread", globalTimeoutMs = 300_000, onProgress } = input;
   let subtasks = input.subtasks;
   let autoSplitUsed = false;
 
@@ -683,14 +789,21 @@ export async function parallelDelegate(
         const startTime = Date.now();
         console.error(`[OptimizerMCP] ▶ Subtask '${subtask.id}' → ${assignment.model}@${assignment.service}`);
 
+        // Create a subtask-prefixed progress callback
+        const subtaskProgress: ProgressCallback | undefined = onProgress
+          ? (msg) => onProgress(`[${subtask.id}] ${msg}`)
+          : undefined;
+
         const delegationResult = await delegateTask(
           subtask.prompt,
           assignment.model,
           assignment.service,
           {
-            timeoutMs: subtask.timeoutMs ?? 240_000,
+            timeoutMs: subtask.timeoutMs ?? 60_000,
+            maxTotalMs: 600_000,
             fallbackModel: assignment.fallbackModel,
             fallbackService: assignment.fallbackService,
+            onProgress: subtaskProgress,
           }
         );
 

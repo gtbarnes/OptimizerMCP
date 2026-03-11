@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
@@ -60,6 +60,100 @@ export async function runCommand(
       exitCode: typeof e.code === "number" ? e.code : 1,
     };
   }
+}
+
+/**
+ * Run a command with streaming output and activity-based timeout.
+ * Unlike `runCommand()` (which buffers everything), this uses `spawn` to get
+ * real-time output events. The process stays alive as long as it produces
+ * output; it's killed after `activityTimeoutMs` of silence or `maxTotalMs` total.
+ *
+ * Used by delegation functions so MCP can report progress mid-execution.
+ */
+export async function runCommandStreaming(
+  command: string,
+  args: string[],
+  options: {
+    cwd?: string;
+    activityTimeoutMs?: number;  // kill after N ms of no output (default: 60s)
+    maxTotalMs?: number;         // hard cap regardless of activity (default: 600s)
+    onOutput?: (chunk: string, stream: "stdout" | "stderr") => void;
+    env?: Record<string, string>;
+  } = {}
+): Promise<SubprocessResult> {
+  const {
+    cwd,
+    activityTimeoutMs = 60_000,
+    maxTotalMs = 600_000,
+    onOutput,
+    env,
+  } = options;
+
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: env ? { ...process.env, ...env } : process.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdoutBuf = "";
+    let stderrBuf = "";
+    let lastActivity = Date.now();
+    const startTime = Date.now();
+    let resolved = false;
+
+    function finish(exitCode: number) {
+      if (resolved) return;
+      resolved = true;
+      clearInterval(activityCheck);
+      clearTimeout(hardCap);
+      resolve({ stdout: stdoutBuf, stderr: stderrBuf, exitCode });
+    }
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      const text = chunk.toString();
+      stdoutBuf += text;
+      lastActivity = Date.now();
+      onOutput?.(text, "stdout");
+    });
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      const text = chunk.toString();
+      stderrBuf += text;
+      lastActivity = Date.now();
+      onOutput?.(text, "stderr");
+    });
+
+    child.on("close", (code) => {
+      finish(code ?? 0);
+    });
+
+    child.on("error", (err) => {
+      stderrBuf += err.message;
+      finish(1);
+    });
+
+    // Activity-based timeout: kill if no output for activityTimeoutMs
+    const activityCheck = setInterval(() => {
+      if (Date.now() - lastActivity > activityTimeoutMs) {
+        stderrBuf += `\n[Activity timeout: no output for ${Math.round(activityTimeoutMs / 1000)}s]`;
+        child.kill("SIGTERM");
+        setTimeout(() => { if (!resolved) child.kill("SIGKILL"); }, 5_000);
+      }
+    }, 5_000);
+
+    // Hard cap: absolute maximum runtime
+    const hardCap = setTimeout(() => {
+      if (!resolved) {
+        stderrBuf += `\n[Hard timeout: ${Math.round(maxTotalMs / 1000)}s elapsed]`;
+        child.kill("SIGTERM");
+        setTimeout(() => { if (!resolved) child.kill("SIGKILL"); }, 5_000);
+      }
+    }, maxTotalMs);
+
+    // Close stdin since we don't send input to delegation subprocesses
+    child.stdin.end();
+  });
 }
 
 export async function commandExists(command: string): Promise<boolean> {
