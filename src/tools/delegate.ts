@@ -419,7 +419,7 @@ async function autoSplitTask(task: string): Promise<SubtaskInput[] | null> {
     if (valid.length < 2) return null;
 
     return valid.map((p) => ({
-      id: p.id ?? `subtask-${Math.random().toString(36).slice(2, 6)}`,
+      id: (typeof p.id === "string" && p.id.trim()) || `subtask-${Math.random().toString(36).slice(2, 6)}`,
       prompt: p.prompt,
     }));
   } catch {
