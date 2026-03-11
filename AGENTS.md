@@ -102,6 +102,29 @@ If you are spending 1000+ tokens on a task, ask yourself: "Could I have delegate
 | Moderate | Claude sonnet | Z.AI glm-4.7 |
 | Complex | Claude opus | Z.AI glm-5 |
 | UI/Visual | Claude (always) | Claude |
+| Quota critical (2+ services) | Free model (auto) | Original route |
+
+## Free Model Fallback
+
+When 2+ of the 3 paid services (Claude, Codex, Z.AI) hit critical quota levels (>80%), the optimizer automatically discovers and routes to free models available in OpenCode's marketplace.
+
+**How it works:**
+- Triggered automatically when 2+ services are critical — no configuration needed
+- Discovers available free models via `opencode models opencode` (cached 5 minutes)
+- Ranks models by name heuristic and selects the best available
+- Original routing decision becomes the fallback if free model fails
+
+**Exclusions:**
+- UI tasks always use Claude (computer-use required)
+- Architectural tasks always use premium models
+- If no free models are currently available, normal routing proceeds
+
+**Manual targeting:** You can also explicitly target a free model:
+```json
+{ "prompt": "...", "target_service": "opencode", "target_model": "opencode/big-pickle" }
+```
+
+**Requirements:** OpenCode must be installed (`brew install anomalyco/tap/opencode`).
 
 ## Anti-Patterns (YOU ARE FAILING IF YOU DO THESE)
 
