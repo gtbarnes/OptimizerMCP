@@ -75,6 +75,8 @@ async function dispatchToService(
       return await delegateToCodex(prompt, model, cwd, timeoutMs);
     case "zai":
       return await delegateToZai(prompt, model, cwd, timeoutMs);
+    case "opencode":
+      return await delegateToOpenCode(prompt, model, cwd, timeoutMs);
     default:
       return {
         success: false,
@@ -314,6 +316,37 @@ async function delegateToZaiViaClaude(
   };
 }
 
+async function delegateToOpenCode(
+  prompt: string,
+  model: string,
+  cwd: string,
+  timeoutMs: number
+): Promise<DelegationResult> {
+  // model is already a qualifiedName like "opencode/big-pickle"
+  console.error(`[OptimizerMCP] Delegating to free model via OpenCode: ${model}`);
+  const args = ["run", "-m", model, "--", prompt];
+  const result = await runCommand("opencode", args, { cwd, timeoutMs });
+
+  if (result.exitCode !== 0) {
+    return {
+      success: false,
+      output: "",
+      error: `OpenCode free model exited with code ${result.exitCode}: ${result.stderr}`,
+      model_used: model,
+      service_used: "opencode",
+      estimated_tokens: 0,
+    };
+  }
+
+  return {
+    success: true,
+    output: result.stdout.trim(),
+    model_used: model,
+    service_used: "opencode",
+    estimated_tokens: 0,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Parallel Delegation
 // ═══════════════════════════════════════════════════════════════════════
@@ -443,6 +476,9 @@ function applySpreadStrategy(
   for (const [service, count] of counts) {
     if (count <= maxPerService) continue;
 
+    // Don't redistribute away from opencode — free models have no quota
+    if (service === "opencode") continue;
+
     const onService = assignments
       .filter((a) => a.service === service)
       .sort((a, b) => (COMPLEXITY_ORDER[a.complexity] ?? 0) - (COMPLEXITY_ORDER[b.complexity] ?? 0));
@@ -512,7 +548,7 @@ export async function parallelDelegate(
 
   // Classify and route each subtask
   const quotaStatuses = getQuotaStatus();
-  const assignments = subtasks.map((subtask) => {
+  const assignments = await Promise.all(subtasks.map(async (subtask) => {
     if (subtask.targetService && subtask.targetModel) {
       return {
         subtask,
@@ -526,7 +562,7 @@ export async function parallelDelegate(
     }
 
     const classification = classifyTask(subtask.prompt);
-    const routing = routeTask(classification, quotaStatuses);
+    const routing = await routeTask(classification, quotaStatuses);
 
     return {
       subtask,
@@ -537,7 +573,7 @@ export async function parallelDelegate(
       complexity: classification.complexity,
       reasoning: routing.reasoning,
     };
-  });
+  }));
 
   // Apply distribution strategy
   if (strategy === "spread") {

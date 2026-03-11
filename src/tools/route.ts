@@ -1,6 +1,7 @@
 import type { Complexity, TaskClassification } from "./classify.js";
 import type { QuotaStatus } from "../tracking/usage-store.js";
 import { getModelRegistry, type ModelDef, type ServiceType } from "../config/models.js";
+import { getBestFreeModel } from "./free-models.js";
 
 export interface RoutingDecision {
   recommended_model: string;
@@ -90,10 +91,10 @@ function pickFallback(primaryService: ServiceType): { service: ServiceType; mode
   return { service: "zai", model: findBestModel("zai", "budget") };
 }
 
-export function routeTask(
+export async function routeTask(
   classification: TaskClassification,
   quotaStatuses: QuotaStatus[]
-): RoutingDecision {
+): Promise<RoutingDecision> {
   const codexQuota = quotaStatuses.find((q) => q.service === "codex");
   const claudeQuota = quotaStatuses.find((q) => q.service === "claude");
   const zaiQuota = quotaStatuses.find((q) => q.service === "zai");
@@ -152,6 +153,22 @@ export function routeTask(
   const primaryModel = findBestModel(preferred.service, preferred.tier);
   const fallback = pickFallback(preferred.service);
 
+  // ── Free model escape hatch ──────────────────────────────────────
+  // When 2+ paid services are critical, try free OpenCode models
+  let freeModelOverride: { qualifiedName: string } | null = null;
+  const criticalCount = [codexLevel, claudeLevel, zaiLevel].filter((l) => l === "critical").length;
+
+  if (
+    criticalCount >= 2 &&
+    classification.complexity !== "architectural" &&
+    !classification.is_ui_related
+  ) {
+    const freeModel = await getBestFreeModel();
+    if (freeModel) {
+      freeModelOverride = freeModel;
+    }
+  }
+
   const reasoning = buildReasoning(
     classification,
     preferred,
@@ -160,6 +177,18 @@ export function routeTask(
     zaiLevel,
     primaryModel
   );
+
+  if (freeModelOverride) {
+    return {
+      recommended_model: freeModelOverride.qualifiedName,
+      recommended_service: "opencode" as ServiceType,
+      reasoning: reasoning + ". FREE MODEL OVERRIDE: 2+ services critical, using free model" +
+        ` (fallback: ${primaryModel?.id ?? "glm-4.7"}@${preferred.service})`,
+      fallback_model: primaryModel?.id ?? "glm-4.7",
+      fallback_service: preferred.service,
+      cost_tier: "budget",
+    };
+  }
 
   return {
     recommended_model: primaryModel?.id ?? "glm-4.7",

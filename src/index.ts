@@ -122,7 +122,7 @@ server.registerTool(
     };
 
     const quotaStatuses = getQuotaStatus();
-    const decision = routeTask(classification, quotaStatuses);
+    const decision = await routeTask(classification, quotaStatuses);
 
     // Replace internal "zai" with "zhipuai" for user-facing output
     const displayDecision = {
