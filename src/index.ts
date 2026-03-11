@@ -12,10 +12,13 @@ import { optimizeContext, getProjectSummary, invalidateToolsCache } from "./tool
 import { getQuotaStatus, recordUsage } from "./tracking/usage-store.js";
 import { invalidateRegistryCache } from "./config/models.js";
 import { detectAvailableTools } from "./utils/subprocess.js";
+import { discoverFreeModels } from "./tools/free-models.js";
 
 // Display-friendly service names for user-facing output
 function displayService(service: string): string {
-  return service === "zai" ? "zhipuai" : service;
+  if (service === "zai") return "zhipuai";
+  if (service === "opencode") return "opencode (free)";
+  return service;
 }
 
 const server = new McpServer({
@@ -153,13 +156,13 @@ server.registerTool(
       "Call this to make informed decisions about model selection.",
     inputSchema: {
       service: z
-        .enum(["codex", "claude", "zai"])
+        .enum(["codex", "claude", "zai", "opencode"])
         .optional()
         .describe("Filter to a specific service, or omit for all"),
     },
   },
   async ({ service }) => {
-    const report = checkQuota(service);
+    const report = await checkQuota(service);
 
     return {
       content: [
@@ -197,14 +200,14 @@ server.registerTool(
         .string()
         .describe("Model ID to use (e.g., claude-sonnet-4-6, codex-mini, glm-4.7)"),
       target_service: z
-        .enum(["codex", "claude", "zai", "zhipuai"])
+        .enum(["codex", "claude", "zai", "zhipuai", "opencode"])
         .describe("Which service to delegate to (zhipuai = Z.AI Coding Plan)"),
       fallback_model: z
         .string()
         .optional()
         .describe("Fallback model ID if primary fails (from recommend_model)"),
       fallback_service: z
-        .enum(["codex", "claude", "zai", "zhipuai"])
+        .enum(["codex", "claude", "zai", "zhipuai", "opencode"])
         .optional()
         .describe("Fallback service if primary fails (from recommend_model)"),
       timeout_seconds: z
@@ -215,8 +218,8 @@ server.registerTool(
   },
   async ({ prompt, target_model, target_service, fallback_model, fallback_service, timeout_seconds }) => {
     // Normalize "zhipuai" to internal "zai" service type
-    const normalizedService = (target_service === "zhipuai" ? "zai" : target_service) as "codex" | "claude" | "zai";
-    const normalizedFallback = (fallback_service === "zhipuai" ? "zai" : fallback_service) as "codex" | "claude" | "zai" | undefined;
+    const normalizedService = (target_service === "zhipuai" ? "zai" : target_service) as "codex" | "claude" | "zai" | "opencode";
+    const normalizedFallback = (fallback_service === "zhipuai" ? "zai" : fallback_service) as "codex" | "claude" | "zai" | "opencode" | undefined;
     const result = await delegateTask(prompt, target_model, normalizedService, {
       timeoutMs: (timeout_seconds ?? 240) * 1000,
       fallbackModel: fallback_model,
@@ -426,6 +429,16 @@ server.registerTool(
       lines.push("RECOMMENDED: Install Distill (npm i -g @samuelfaj/distill) for 95-99% token savings on CLI output");
     }
 
+    // Show free model availability
+    const freeModels = await discoverFreeModels();
+    if (freeModels.length > 0) {
+      lines.push(`  Free models (OpenCode): ${freeModels.length} available (best: ${freeModels[0].model})`);
+    } else if (tools.opencode) {
+      lines.push(`  Free models (OpenCode): none detected`);
+    } else {
+      lines.push(`  Free models (OpenCode): N/A (OpenCode not installed)`);
+    }
+
     return {
       content: [
         {
@@ -446,7 +459,7 @@ server.registerTool(
       "Manually record a usage event for tracking purposes. " +
       "Use after completing a task to keep quota estimates accurate.",
     inputSchema: {
-      service: z.enum(["codex", "claude", "zai"]).describe("Which service was used"),
+      service: z.enum(["codex", "claude", "zai", "opencode"]).describe("Which service was used"),
       model: z.string().describe("Model ID that was used"),
       estimated_input_tokens: z
         .number()
@@ -504,7 +517,7 @@ server.registerTool(
             id: z.string().describe("Unique subtask identifier (e.g., 'auth-backend')"),
             prompt: z.string().describe("The task prompt to execute"),
             target_service: z
-              .enum(["codex", "claude", "zai", "zhipuai"])
+              .enum(["codex", "claude", "zai", "zhipuai", "opencode"])
               .optional()
               .describe("Override auto-routing for this subtask (use 'zhipuai' for Z.AI)"),
             target_model: z
