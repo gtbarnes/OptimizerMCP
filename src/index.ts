@@ -567,11 +567,20 @@ server.registerTool(
       globalTimeoutMs: (global_timeout_seconds ?? 300) * 1000,
     });
 
+    // Transform internal service names for user-facing output
+    const displayResult = {
+      ...result,
+      subtask_results: result.subtask_results.map((r) => ({
+        ...r,
+        service_used: displayService(r.service_used),
+      })),
+    };
+
     return {
       content: [
         {
           type: "text" as const,
-          text: JSON.stringify(result, null, 2),
+          text: JSON.stringify(displayResult, null, 2),
         },
       ],
     };
