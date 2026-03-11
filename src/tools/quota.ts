@@ -74,6 +74,18 @@ export async function checkQuota(service?: string): Promise<QuotaReport> {
       "Claude and Codex near limits. Route work to Z.AI. " +
       "Use glm-4.5-air for simple tasks, glm-4.7 for moderate." +
       (freeModel ? ` Free models also available (${freeModel.model}).` : "");
+  } else if (claudePercent > 80 && zaiPercent > 80) {
+    const freeModel = await getBestFreeModel();
+    budget_advice =
+      "Claude and Z.AI near limits. Route work to Codex. " +
+      "Use codex-mini for simple tasks." +
+      (freeModel ? ` Free models also available (${freeModel.model}).` : "");
+  } else if (codexPercent > 80 && zaiPercent > 80) {
+    const freeModel = await getBestFreeModel();
+    budget_advice =
+      "Codex and Z.AI near limits. Route work to Claude. " +
+      "Use haiku for simple tasks, sonnet for moderate." +
+      (freeModel ? ` Free models also available (${freeModel.model}).` : "");
   } else if (claudePercent > 80) {
     budget_advice =
       "Claude near limit. Route to Z.AI (glm-4.7) or Codex. " +

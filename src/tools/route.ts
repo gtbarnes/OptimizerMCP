@@ -223,7 +223,11 @@ function buildReasoning(
   if (classification.requires_multi_file) parts.push("Multi-file task");
   if (classification.requires_reasoning) parts.push("Requires reasoning");
   if (classification.is_agentic) parts.push("Agentic workflow detected");
-  if (classification.is_ui_related) parts.push("UI task → forced Claude (computer-use)");
+  if (classification.is_ui_related) {
+    parts.push(preferred.service === "claude"
+      ? "UI task → forced Claude (computer-use)"
+      : "UI task detected but Claude unavailable (critical quota)");
+  }
 
   if (codexLevel === "critical" || claudeLevel === "critical") {
     parts.push("WARNING: Major service near quota");
