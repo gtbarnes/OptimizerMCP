@@ -4,6 +4,7 @@ import {
   getTokensInWindow,
   type QuotaStatus,
 } from "../tracking/usage-store.js";
+import { getBestFreeModel } from "./free-models.js";
 
 export interface QuotaReport {
   statuses: QuotaStatus[];
@@ -13,7 +14,7 @@ export interface QuotaReport {
   budget_advice: string;
 }
 
-export function checkQuota(service?: string): QuotaReport {
+export async function checkQuota(service?: string): Promise<QuotaReport> {
   const allStatuses = getQuotaStatus();
   const statuses = service
     ? allStatuses.filter((s) => s.service === service)
@@ -40,13 +41,23 @@ export function checkQuota(service?: string): QuotaReport {
 
   let budget_advice: string;
   if (claudePercent > 80 && codexPercent > 80 && zaiPercent > 80) {
-    budget_advice =
-      "CRITICAL: All three services near limits. Use only budget models. " +
-      "Consider waiting for the 5-hour window to reset.";
+    const freeModel = await getBestFreeModel();
+    if (freeModel) {
+      budget_advice =
+        "CRITICAL: All three services near limits. Free models available via OpenCode — " +
+        `routing will auto-select them (best: ${freeModel.model}). ` +
+        "Consider waiting for the 5-hour window to reset for premium tasks.";
+    } else {
+      budget_advice =
+        "CRITICAL: All three services near limits. Use only budget models. " +
+        "Consider waiting for the 5-hour window to reset.";
+    }
   } else if (claudePercent > 80 && codexPercent > 80) {
+    const freeModel = await getBestFreeModel();
     budget_advice =
       "Claude and Codex near limits. Route work to Z.AI. " +
-      "Use glm-4.5-air for simple tasks, glm-4.7 for moderate.";
+      "Use glm-4.5-air for simple tasks, glm-4.7 for moderate." +
+      (freeModel ? ` Free models also available (${freeModel.model}).` : "");
   } else if (claudePercent > 80) {
     budget_advice =
       "Claude near limit. Route to Z.AI (glm-4.7) or Codex. " +
