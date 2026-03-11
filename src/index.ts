@@ -40,6 +40,7 @@ server.registerTool(
     inputSchema: {
       task_description: z
         .string()
+        .min(1)
         .describe("The user's task description or prompt to classify"),
     },
   },
@@ -216,8 +217,10 @@ server.registerTool(
         .describe("Fallback service if primary fails (from recommend_model)"),
       timeout_seconds: z
         .number()
+        .min(1)
+        .max(600)
         .optional()
-        .describe("Timeout in seconds (default: 240)"),
+        .describe("Timeout in seconds, 1-600 (default: 240)"),
     },
   },
   async ({ prompt, target_model, target_service, fallback_model, fallback_service, timeout_seconds }) => {
@@ -344,7 +347,8 @@ server.registerTool(
         .describe("Relative cost weight (0=free tier, 10=most expensive)"),
       context_window: z
         .number()
-        .describe("Context window size in tokens"),
+        .min(1024)
+        .describe("Context window size in tokens (min: 1024)"),
     },
   },
   async ({ model_id, service, tier, capabilities, cost_weight, context_window }) => {
@@ -470,10 +474,12 @@ server.registerTool(
       model: z.string().describe("Model ID that was used"),
       estimated_input_tokens: z
         .number()
+        .min(0)
         .optional()
         .describe("Estimated input tokens (default: 1000)"),
       estimated_output_tokens: z
         .number()
+        .min(0)
         .optional()
         .describe("Estimated output tokens (default: 500)"),
       task_complexity: z
@@ -523,8 +529,8 @@ server.registerTool(
       subtasks: z
         .array(
           z.object({
-            id: z.string().describe("Unique subtask identifier (e.g., 'auth-backend')"),
-            prompt: z.string().describe("The task prompt to execute"),
+            id: z.string().min(1).describe("Unique subtask identifier (e.g., 'auth-backend')"),
+            prompt: z.string().min(1).describe("The task prompt to execute"),
             target_service: z
               .enum(["codex", "claude", "zai", "zhipuai", "opencode"])
               .optional()
@@ -535,14 +541,18 @@ server.registerTool(
               .describe("Override auto-routing with a specific model"),
             timeout_seconds: z
               .number()
+              .min(1)
+              .max(600)
               .optional()
-              .describe("Per-subtask timeout (default: 240)"),
+              .describe("Per-subtask timeout in seconds, 1-600 (default: 240)"),
             depends_on: z
               .array(z.string())
               .optional()
               .describe("IDs of subtasks that must complete before this one starts"),
           })
         )
+        .min(2)
+        .max(10)
         .optional()
         .describe("2-10 subtasks to run in parallel. Required unless using auto_split with task."),
       auto_split: z
@@ -555,8 +565,10 @@ server.registerTool(
         .describe("Distribution strategy: spread (balance across services), cheapest (minimize cost), fastest (no rebalancing)"),
       global_timeout_seconds: z
         .number()
+        .min(10)
+        .max(600)
         .optional()
-        .describe("Overall timeout for all subtasks in seconds (default: 300)"),
+        .describe("Overall timeout for all subtasks in seconds, 10-600 (default: 300)"),
     },
   },
   async ({ task, subtasks, auto_split, strategy, global_timeout_seconds }) => {
