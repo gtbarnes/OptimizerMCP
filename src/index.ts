@@ -12,7 +12,7 @@ import { optimizeContext, getProjectSummary, invalidateToolsCache } from "./tool
 import { getQuotaStatus, recordUsage } from "./tracking/usage-store.js";
 import { invalidateRegistryCache } from "./config/models.js";
 import { detectAvailableTools } from "./utils/subprocess.js";
-import { discoverFreeModels } from "./tools/free-models.js";
+import { discoverFreeModels, invalidateFreeModelCache } from "./tools/free-models.js";
 
 // Display-friendly service names for user-facing output
 function displayService(service: string): string {
@@ -398,8 +398,9 @@ server.registerTool(
     inputSchema: {},
   },
   async () => {
-    // Invalidate the optimize pipeline's tool cache so it picks up changes
+    // Invalidate caches so fresh detection picks up changes
     invalidateToolsCache();
+    invalidateFreeModelCache();
     const tools = await detectAvailableTools();
 
     const lines: string[] = ["Available Tools:"];
