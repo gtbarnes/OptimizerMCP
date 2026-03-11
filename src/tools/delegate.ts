@@ -1,4 +1,4 @@
-import { runCommand, runCommandStreaming, commandExists, callOllama } from "../utils/subprocess.js";
+import { runCommand, runCommandStreaming, callOllama } from "../utils/subprocess.js";
 import { recordUsage, getQuotaStatus } from "../tracking/usage-store.js";
 import type { ServiceType } from "../config/models.js";
 import { classifyTask } from "./classify.js";
@@ -225,8 +225,9 @@ async function delegateToCodex(
 }
 
 /**
- * Delegate to Zhipu AI Coding Plan via OpenCode CLI.
- * OpenCode is the ONLY supported path — no direct API or Claude CLI fallback.
+ * Delegate to Zhipu AI Coding Plan via Claude CLI.
+ * Uses the "zhipuai-coding-plan/<model>" provider-qualified model name
+ * that Claude Code recognizes as a third-party provider.
  */
 async function delegateToZai(
   prompt: string,
@@ -236,39 +237,14 @@ async function delegateToZai(
   maxTotalMs: number,
   onProgress?: ProgressCallback,
 ): Promise<DelegationResult> {
-  const hasOpenCode = await commandExists("opencode");
-  if (!hasOpenCode) {
-    return {
-      success: false,
-      output: "",
-      error: `Zhipu AI Coding Plan delegation requires OpenCode CLI. ` +
-        `Install it: brew install anomalyco/tap/opencode && opencode auth login`,
-      model_used: model,
-      service_used: "zai",
-      estimated_tokens: 0,
-    };
-  }
-
-  return await delegateToZaiViaOpenCode(prompt, model, cwd, activityTimeoutMs, maxTotalMs, onProgress);
-}
-
-async function delegateToZaiViaOpenCode(
-  prompt: string,
-  model: string,
-  cwd: string,
-  activityTimeoutMs: number,
-  maxTotalMs: number,
-  onProgress?: ProgressCallback,
-): Promise<DelegationResult> {
-  // Always use the "zhipuai-coding-plan" provider in OpenCode
-  // Strip any existing provider prefix before adding the correct one
+  // Strip any existing provider prefix, then qualify with zhipuai-coding-plan
   const bareModel = model.replace(/^(zai|zhipuai-coding-plan)\//, "");
   const qualifiedModel = `zhipuai-coding-plan/${bareModel}`;
-  console.error(`[OptimizerMCP] Delegating to Zhipu AI Coding Plan via OpenCode: ${qualifiedModel}`);
+  console.error(`[OptimizerMCP] Delegating to Zhipu AI via Claude CLI: ${qualifiedModel}`);
   onProgress?.(`[zhipuai] Starting ${qualifiedModel}...`);
-  const args = ["run", "-m", qualifiedModel, "--", prompt];
-  const tracker = createOutputTracker(onProgress, `zai/${bareModel}`);
-  const result = await runCommandStreaming("opencode", args, {
+  const args = ["-p", "--output-format", "text", "--model", qualifiedModel, "--", prompt];
+  const tracker = createOutputTracker(onProgress, `zhipuai/${bareModel}`);
+  const result = await runCommandStreaming("claude", args, {
     cwd,
     activityTimeoutMs,
     maxTotalMs,
@@ -276,22 +252,24 @@ async function delegateToZaiViaOpenCode(
   });
 
   if (result.exitCode !== 0) {
+    console.error(`[OptimizerMCP] Zhipu AI delegation failed (exit ${result.exitCode})`);
     onProgress?.(`[zhipuai] Failed (exit ${result.exitCode})`);
     return {
       success: false,
       output: "",
-      error: `Zhipu AI Coding Plan delegation failed (exit ${result.exitCode}): ${result.stderr}`,
-      model_used: model,
+      error: `Zhipu AI delegation failed (exit ${result.exitCode}): ${result.stderr}`,
+      model_used: bareModel,
       service_used: "zai",
       estimated_tokens: 0,
     };
   }
 
+  console.error(`[OptimizerMCP] Zhipu AI delegation succeeded (${result.stdout.length} chars)`);
   onProgress?.(`[zhipuai] Complete (${tracker.summarize()})`);
   return {
     success: true,
-    output: cleanOpenCodeOutput(result.stdout),
-    model_used: model,
+    output: result.stdout.trim(),
+    model_used: bareModel,
     service_used: "zai",
     estimated_tokens: 0,
   };
