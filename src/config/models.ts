@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export type ServiceType = "codex" | "claude" | "zai";
+export type ServiceType = "codex" | "claude" | "zai" | "opencode";
 
 export interface ModelDef {
   id: string;
