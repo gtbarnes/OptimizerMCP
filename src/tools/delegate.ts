@@ -579,6 +579,16 @@ export async function parallelDelegate(
     };
   }));
 
+  // Opus gate: NEVER allow opus in parallel mode (no confirmation flow here).
+  // Downgrade any opus assignment to sonnet — catches manual overrides too.
+  for (const a of assignments) {
+    if (a.model.toLowerCase().includes("opus")) {
+      a.model = "claude-sonnet-4-6";
+      a.service = "claude";
+      a.reasoning += " [Opus downgraded → sonnet in parallel mode (no confirmation flow)]";
+    }
+  }
+
   // Apply distribution strategy
   if (strategy === "spread") {
     applySpreadStrategy(assignments);
