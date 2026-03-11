@@ -4,6 +4,22 @@ import type { ServiceType } from "../config/models.js";
 import { classifyTask } from "./classify.js";
 import { routeTask } from "./route.js";
 
+/**
+ * Strip ANSI escape codes and OpenCode's decorative banner lines from stdout.
+ * OpenCode injects colored banners like "\x1B[0m\n> build · glm-4.7\n\x1B[0m\n"
+ * that pollute the actual model response.
+ */
+function cleanOpenCodeOutput(raw: string): string {
+  let cleaned = raw
+    // Strip ANSI escape sequences
+    .replace(/\x1B\[[0-9;]*[A-Za-z]/g, "")
+    // Remove OpenCode banner lines: "> build · model-name" and similar
+    .replace(/^>\s+(build|run|chat)\s+.*$/gm, "")
+    // Collapse multiple blank lines into one
+    .replace(/\n{3,}/g, "\n\n");
+  return cleaned.trim();
+}
+
 export interface DelegationResult {
   success: boolean;
   output: string;
@@ -208,7 +224,7 @@ async function delegateToZaiViaOpenCode(
 
   return {
     success: true,
-    output: result.stdout.trim(),
+    output: cleanOpenCodeOutput(result.stdout),
     model_used: model,
     service_used: "zai",
     estimated_tokens: 0,
@@ -340,7 +356,7 @@ async function delegateToOpenCode(
 
   return {
     success: true,
-    output: result.stdout.trim(),
+    output: cleanOpenCodeOutput(result.stdout),
     model_used: model,
     service_used: "opencode",
     estimated_tokens: 0,

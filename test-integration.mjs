@@ -110,16 +110,16 @@ async function runTests() {
     assert(typeof data.is_ui_related === "boolean", "is_ui_related is boolean");
   }
 
-  // ── Test 2: classify_task empty string ─────────────────────────────
-  console.log("\n2. classify_task (empty string)");
+  // ── Test 2: classify_task empty string (should be rejected by validation) ─
+  console.log("\n2. classify_task (empty string → validation error)");
   {
     const res = await server.send("tools/call", {
       name: "classify_task",
       arguments: { task_description: "" },
     });
-    const data = getContent(res);
-    assert(!data._error, "No error on empty string");
-    assert(data.complexity === "trivial", "Empty string → trivial", `got: ${data.complexity}`);
+    // .min(1) validation returns isError: true in the result
+    const isRejected = !!res.error || !!res.result?.isError;
+    assert(isRejected, "Empty string rejected by validation");
   }
 
   // ── Test 3: recommend_model → opus gate ────────────────────────────
