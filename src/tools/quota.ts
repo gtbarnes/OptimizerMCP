@@ -72,47 +72,47 @@ export async function checkQuota(service?: string): Promise<QuotaReport> {
   } else if (claudePercent > 80 && codexPercent > 80) {
     const freeModel = await getBestFreeModel();
     budget_advice =
-      "Claude and Codex near limits. Route work to Z.AI. " +
+      "Claude and Codex near limits. Route work to Zhipu AI. " +
       "Use glm-4.5-air for simple tasks, glm-4.7 for moderate." +
       (freeModel ? ` Free models also available (${freeModel.model}).` : "");
   } else if (claudePercent > 80 && zaiPercent > 80) {
     const freeModel = await getBestFreeModel();
     budget_advice =
-      "Claude and Z.AI near limits. Route work to Codex. " +
+      "Claude and Zhipu AI near limits. Route work to Codex. " +
       "Use codex-mini for simple tasks." +
       (freeModel ? ` Free models also available (${freeModel.model}).` : "");
   } else if (codexPercent > 80 && zaiPercent > 80) {
     const freeModel = await getBestFreeModel();
     budget_advice =
-      "Codex and Z.AI near limits. Route work to Claude. " +
+      "Codex and Zhipu AI near limits. Route work to Claude. " +
       "Use haiku for simple tasks, sonnet for moderate." +
       (freeModel ? ` Free models also available (${freeModel.model}).` : "");
   } else if (claudePercent > 80) {
     budget_advice =
-      "Claude near limit. Route to Z.AI (glm-4.7) or Codex. " +
-      "Use codex-mini for simple tasks, Z.AI for coding tasks.";
+      "Claude near limit. Route to Zhipu AI (glm-4.7) or Codex. " +
+      "Use codex-mini for simple tasks, Zhipu AI for coding tasks.";
   } else if (codexPercent > 80) {
     budget_advice =
-      "Codex near limit. Route to Z.AI or Claude. " +
+      "Codex near limit. Route to Zhipu AI or Claude. " +
       "Use glm-4.5-air/haiku for simple tasks, glm-4.7/sonnet for moderate.";
   } else if (zaiPercent > 80) {
     budget_advice =
-      "Z.AI near limit. Route to Codex or Claude for budget tasks. " +
-      "Z.AI quotas are generous — this may indicate heavy use.";
+      "Zhipu AI near limit. Route to Codex or Claude for budget tasks. " +
+      "Zhipu AI quotas are generous — this may indicate heavy use.";
   } else if (claudePercent > 50 || codexPercent > 50) {
     budget_advice =
-      "Moderate usage on premium services. Prefer Z.AI (glm-4.7) for cost savings. " +
+      "Moderate usage on premium services. Prefer Zhipu AI (glm-4.7) for cost savings. " +
       "Save flagship models for complex/architectural tasks only.";
   } else {
     budget_advice =
       "Good budget headroom. Full model range available. " +
-      "Still prefer Z.AI for routine tasks to conserve Claude/Codex quota.";
+      "Still prefer Zhipu AI for routine tasks to conserve Claude/Codex quota.";
   }
 
   budget_advice += `\n\nEstimated tokens used (5h window):`;
   budget_advice += `\n  Claude: ~${claudeTokens.input + claudeTokens.output} total tokens`;
   budget_advice += `\n  Codex: ~${codexTokens.input + codexTokens.output} total tokens`;
-  budget_advice += `\n  Z.AI: ~${zaiTokens.input + zaiTokens.output} total tokens`;
+  budget_advice += `\n  Zhipu AI: ~${zaiTokens.input + zaiTokens.output} total tokens`;
 
   return {
     statuses,

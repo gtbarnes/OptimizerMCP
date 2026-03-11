@@ -132,13 +132,13 @@ export function getQuotaStatus(): QuotaStatus[] {
     limit_weekly: claudeLimitWeekly,
     percent_weekly: Math.round((claudeUsedWeekly / claudeLimitWeekly) * 100),
     recommendation: claudeUsed5h / claudeLimit5h > 0.8
-      ? "CONSERVE: Use Haiku only, or delegate to Codex/Z.AI"
+      ? "CONSERVE: Use Haiku only, or delegate to Codex/Zhipu AI"
       : claudeUsed5h / claudeLimit5h > 0.5
         ? "MODERATE: Prefer Sonnet/Haiku, avoid Opus"
         : "NORMAL: Full model range available",
   });
 
-  // Z.AI quota
+  // Zhipu AI quota
   const zaiUsed5h = getUsageInWindow("zai", 5);
   const zaiLimit5h = limits.zai === "lite" ? 120 : limits.zai === "pro" ? 600 : 1000;
   const zaiUsedWeekly = getUsageInWindow("zai", 168);
@@ -153,10 +153,10 @@ export function getQuotaStatus(): QuotaStatus[] {
     limit_weekly: zaiLimitWeekly,
     percent_weekly: Math.round((zaiUsedWeekly / zaiLimitWeekly) * 100),
     recommendation: zaiUsed5h / zaiLimit5h > 0.8
-      ? "CONSERVE: Z.AI near limit, route to Codex/Claude"
+      ? "CONSERVE: Zhipu AI near limit, route to Codex/Claude"
       : zaiUsed5h / zaiLimit5h > 0.5
         ? "MODERATE: Prefer glm-4.5-air for simple tasks"
-        : "NORMAL: Full Z.AI model range available",
+        : "NORMAL: Full Zhipu AI model range available",
   });
 
   return results;

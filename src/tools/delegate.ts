@@ -225,10 +225,8 @@ async function delegateToCodex(
 }
 
 /**
- * Delegate to Z.AI with cascading fallback:
- *   1. OpenCode CLI (preferred — handles auth natively via `opencode auth login`)
- *   2. Direct API via curl (if ZAI_API_KEY is set)
- *   3. Claude Code with Z.AI model names (if Claude is configured with Z.AI backend)
+ * Delegate to Zhipu AI Coding Plan via OpenCode CLI.
+ * OpenCode is the ONLY supported path — no direct API or Claude CLI fallback.
  */
 async function delegateToZai(
   prompt: string,
@@ -238,23 +236,20 @@ async function delegateToZai(
   maxTotalMs: number,
   onProgress?: ProgressCallback,
 ): Promise<DelegationResult> {
-  // 1. Try OpenCode CLI (preferred path)
   const hasOpenCode = await commandExists("opencode");
-  if (hasOpenCode) {
-    const result = await delegateToZaiViaOpenCode(prompt, model, cwd, activityTimeoutMs, maxTotalMs, onProgress);
-    if (result.success) return result;
-    onProgress?.(`[zai] OpenCode failed, trying next cascade step...`);
-    // If OpenCode failed (e.g. not authenticated), fall through
+  if (!hasOpenCode) {
+    return {
+      success: false,
+      output: "",
+      error: `Zhipu AI Coding Plan delegation requires OpenCode CLI. ` +
+        `Install it: brew install anomalyco/tap/opencode && opencode auth login`,
+      model_used: model,
+      service_used: "zai",
+      estimated_tokens: 0,
+    };
   }
 
-  // 2. Try direct API if key is available
-  const apiKey = process.env.ZAI_API_KEY ?? process.env.ZHIPU_API_KEY;
-  if (apiKey) {
-    return await delegateToZaiApi(prompt, model, apiKey, activityTimeoutMs, maxTotalMs, onProgress);
-  }
-
-  // 3. Fallback: try Claude Code with Z.AI model names
-  return await delegateToZaiViaClaude(prompt, model, cwd, activityTimeoutMs, maxTotalMs, onProgress);
+  return await delegateToZaiViaOpenCode(prompt, model, cwd, activityTimeoutMs, maxTotalMs, onProgress);
 }
 
 async function delegateToZaiViaOpenCode(
@@ -265,12 +260,12 @@ async function delegateToZaiViaOpenCode(
   maxTotalMs: number,
   onProgress?: ProgressCallback,
 ): Promise<DelegationResult> {
-  // OpenCode provider: use "zhipuai-coding-plan/<model>" (the Zhipu AI Coding Plan)
+  // Always use the "zhipuai-coding-plan" provider in OpenCode
   // Strip any existing provider prefix before adding the correct one
   const bareModel = model.replace(/^(zai|zhipuai-coding-plan)\//, "");
   const qualifiedModel = `zhipuai-coding-plan/${bareModel}`;
-  console.error(`[OptimizerMCP] Delegating to Z.AI via OpenCode: ${qualifiedModel}`);
-  onProgress?.(`[zai/opencode] Starting ${qualifiedModel}...`);
+  console.error(`[OptimizerMCP] Delegating to Zhipu AI Coding Plan via OpenCode: ${qualifiedModel}`);
+  onProgress?.(`[zhipuai] Starting ${qualifiedModel}...`);
   const args = ["run", "-m", qualifiedModel, "--", prompt];
   const tracker = createOutputTracker(onProgress, `zai/${bareModel}`);
   const result = await runCommandStreaming("opencode", args, {
@@ -281,145 +276,21 @@ async function delegateToZaiViaOpenCode(
   });
 
   if (result.exitCode !== 0) {
-    onProgress?.(`[zai/opencode] Failed (exit ${result.exitCode})`);
+    onProgress?.(`[zhipuai] Failed (exit ${result.exitCode})`);
     return {
       success: false,
       output: "",
-      error: `OpenCode exited with code ${result.exitCode}: ${result.stderr}`,
+      error: `Zhipu AI Coding Plan delegation failed (exit ${result.exitCode}): ${result.stderr}`,
       model_used: model,
       service_used: "zai",
       estimated_tokens: 0,
     };
   }
 
-  onProgress?.(`[zai/opencode] Complete (${tracker.summarize()})`);
+  onProgress?.(`[zhipuai] Complete (${tracker.summarize()})`);
   return {
     success: true,
     output: cleanOpenCodeOutput(result.stdout),
-    model_used: model,
-    service_used: "zai",
-    estimated_tokens: 0,
-  };
-}
-
-async function delegateToZaiApi(
-  prompt: string,
-  model: string,
-  apiKey: string,
-  activityTimeoutMs: number,
-  maxTotalMs: number,
-  onProgress?: ProgressCallback,
-): Promise<DelegationResult> {
-  onProgress?.(`[zai/api] Calling Z.AI API with ${model}...`);
-  const body = JSON.stringify({
-    model,
-    max_tokens: 4096,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const args = [
-    "-s", "-X", "POST",
-    "https://api.z.ai/api/anthropic/v1/messages",
-    "-H", "Content-Type: application/json",
-    "-H", `x-api-key: ${apiKey}`,
-    "-H", "anthropic-version: 2023-06-01",
-    "-d", body,
-  ];
-
-  const tracker = createOutputTracker(onProgress, `zai-api/${model}`);
-  const result = await runCommandStreaming("curl", args, {
-    activityTimeoutMs,
-    maxTotalMs,
-    onOutput: tracker.onChunk,
-  });
-
-  if (result.exitCode !== 0) {
-    onProgress?.(`[zai/api] Failed (exit ${result.exitCode})`);
-    return {
-      success: false,
-      output: "",
-      error: `Z.AI API call failed: ${result.stderr}`,
-      model_used: model,
-      service_used: "zai",
-      estimated_tokens: 0,
-    };
-  }
-
-  try {
-    const response = JSON.parse(result.stdout);
-    if (response.error) {
-      onProgress?.(`[zai/api] API error: ${response.error.message ?? "unknown"}`);
-      return {
-        success: false,
-        output: "",
-        error: `Z.AI API error: ${response.error.message ?? JSON.stringify(response.error)}`,
-        model_used: model,
-        service_used: "zai",
-        estimated_tokens: 0,
-      };
-    }
-
-    const text = response.content
-      ?.map((c: { type: string; text?: string }) => c.text ?? "")
-      .join("") ?? "";
-
-    onProgress?.(`[zai/api] Complete (${tracker.summarize()})`);
-    return {
-      success: true,
-      output: text,
-      model_used: model,
-      service_used: "zai",
-      estimated_tokens: 0,
-    };
-  } catch {
-    onProgress?.(`[zai/api] Failed to parse response`);
-    return {
-      success: false,
-      output: result.stdout,
-      error: "Failed to parse Z.AI API response",
-      model_used: model,
-      service_used: "zai",
-      estimated_tokens: 0,
-    };
-  }
-}
-
-async function delegateToZaiViaClaude(
-  prompt: string,
-  model: string,
-  cwd: string,
-  activityTimeoutMs: number,
-  maxTotalMs: number,
-  onProgress?: ProgressCallback,
-): Promise<DelegationResult> {
-  onProgress?.(`[zai/claude-fallback] Starting ${model} via Claude CLI...`);
-  const args = ["-p", "--output-format", "text", "--model", model, "--", prompt];
-  const tracker = createOutputTracker(onProgress, `zai-claude/${model}`);
-  const result = await runCommandStreaming("claude", args, {
-    cwd,
-    activityTimeoutMs,
-    maxTotalMs,
-    onOutput: tracker.onChunk,
-  });
-
-  if (result.exitCode !== 0) {
-    onProgress?.(`[zai/claude-fallback] Failed (exit ${result.exitCode})`);
-    return {
-      success: false,
-      output: "",
-      error: `Z.AI delegation failed. Install OpenCode (brew install anomalyco/tap/opencode) ` +
-        `and run 'opencode auth login' to authenticate with Z.AI, or set ZAI_API_KEY env var.\n` +
-        result.stderr,
-      model_used: model,
-      service_used: "zai",
-      estimated_tokens: 0,
-    };
-  }
-
-  onProgress?.(`[zai/claude-fallback] Complete (${tracker.summarize()})`);
-  return {
-    success: true,
-    output: result.stdout.trim(),
     model_used: model,
     service_used: "zai",
     estimated_tokens: 0,
@@ -720,7 +591,7 @@ export async function parallelDelegate(
       if ((a.complexity === "trivial" || a.complexity === "simple") && a.service !== "zai" && a.service !== "opencode") {
         a.service = "zai";
         a.model = a.complexity === "trivial" ? "glm-4.5-air" : "glm-4.7";
-        a.reasoning += " [Cheapest strategy: routed to Z.AI]";
+        a.reasoning += " [Cheapest strategy: routed to Zhipu AI]";
       }
     }
   }

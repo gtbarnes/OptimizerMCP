@@ -15,9 +15,8 @@ import { detectAvailableTools } from "./utils/subprocess.js";
 import { discoverFreeModels, invalidateFreeModelCache } from "./tools/free-models.js";
 
 // Display-friendly service names for user-facing output.
-// NOTE: Output must be valid enum values for delegate_task/parallel_delegate
-// input schemas. "zhipuai" is accepted (normalized to "zai" in handlers).
-// "opencode" stays as-is — the "(free)" annotation lives in routing reasoning.
+// Internal "zai" → "zhipuai" for display (matches enum in tool schemas).
+// Zhipu AI Coding Plan is the actual provider (via OpenCode CLI).
 function displayService(service: string): string {
   if (service === "zai") return "zhipuai";
   return service;
@@ -161,7 +160,7 @@ server.registerTool(
       service: z
         .enum(["codex", "claude", "zai", "zhipuai", "opencode"])
         .optional()
-        .describe("Filter to a specific service, or omit for all (zhipuai = Z.AI)"),
+        .describe("Filter to a specific service, or omit for all (zhipuai = Zhipu AI Coding Plan)"),
     },
   },
   async ({ service }) => {
@@ -196,7 +195,7 @@ server.registerTool(
   {
     description:
       "Delegate a task to a specific model on a specific service. " +
-      "Executes via subprocess (claude CLI, codex exec, or OpenCode/Z.AI API) and returns the result. " +
+      "Executes via subprocess (claude CLI, codex exec, or OpenCode) and returns the result. " +
       "Use when recommend_model suggests a different service than the current one. " +
       "Pass fallback_model and fallback_service from recommend_model for automatic retry on failure.",
     inputSchema: {
@@ -206,7 +205,7 @@ server.registerTool(
         .describe("Model ID to use (e.g., claude-sonnet-4-6, codex-mini, glm-4.7)"),
       target_service: z
         .enum(["codex", "claude", "zai", "zhipuai", "opencode"])
-        .describe("Which service to delegate to (zhipuai = Z.AI Coding Plan)"),
+        .describe("Which service to delegate to (zhipuai = Zhipu AI Coding Plan)"),
       fallback_model: z
         .string()
         .optional()
@@ -337,7 +336,7 @@ server.registerTool(
       "Changes are persisted to config/models.json.",
     inputSchema: {
       model_id: z.string().describe("Model identifier (e.g., gpt-6, claude-5)"),
-      service: z.enum(["codex", "claude", "zai", "zhipuai"]).describe("Which service provides this model (zhipuai = Z.AI)"),
+      service: z.enum(["codex", "claude", "zai", "zhipuai"]).describe("Which service provides this model (zhipuai = Zhipu AI Coding Plan)"),
       tier: z
         .enum(["flagship", "high", "mid", "budget"])
         .describe("Cost/capability tier"),
@@ -420,7 +419,7 @@ server.registerTool(
     const lines: string[] = ["Available Tools:"];
     lines.push(`  Claude CLI: ${tools.claude ? "YES" : "NO"}`);
     lines.push(`  Codex CLI: ${tools.codex ? "YES" : "NO"}`);
-    lines.push(`  OpenCode (Z.AI): ${tools.opencode ? "YES" : "NO"}`);
+    lines.push(`  OpenCode (Zhipu AI Coding Plan): ${tools.opencode ? "YES" : "NO"}`);
     lines.push(`  RTK (token compressor): ${tools.rtk ? "YES" : "NO"}`);
     lines.push(`  tokf (output filter): ${tools.tokf ? "YES" : "NO"}`);
     lines.push(`  SymDex (code indexer): ${tools.symdex ? "YES" : "NO"}`);
@@ -439,7 +438,7 @@ server.registerTool(
     }
 
     if (!tools.opencode) {
-      lines.push("\nRECOMMENDED: Install OpenCode for Z.AI delegation (brew install anomalyco/tap/opencode)");
+      lines.push("\nRECOMMENDED: Install OpenCode for Zhipu AI Coding Plan delegation (brew install anomalyco/tap/opencode)");
     }
     if (!tools.rtk && !tools.tokf) {
       lines.push("RECOMMENDED: Install RTK (cargo install rtk) or tokf (brew install mpecan/tokf/tokf)");
@@ -474,7 +473,7 @@ server.registerTool(
       "Manually record a usage event for tracking purposes. " +
       "Use after completing a task to keep quota estimates accurate.",
     inputSchema: {
-      service: z.enum(["codex", "claude", "zai", "zhipuai", "opencode"]).describe("Which service was used (zhipuai = Z.AI)"),
+      service: z.enum(["codex", "claude", "zai", "zhipuai", "opencode"]).describe("Which service was used (zhipuai = Zhipu AI Coding Plan)"),
       model: z.string().describe("Model ID that was used"),
       estimated_input_tokens: z
         .number()
@@ -538,7 +537,7 @@ server.registerTool(
             target_service: z
               .enum(["codex", "claude", "zai", "zhipuai", "opencode"])
               .optional()
-              .describe("Override auto-routing for this subtask (use 'zhipuai' for Z.AI)"),
+              .describe("Override auto-routing for this subtask (use 'zhipuai' for Zhipu AI Coding Plan)"),
             target_model: z
               .string()
               .optional()

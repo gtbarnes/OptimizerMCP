@@ -33,7 +33,7 @@ interface RouteTarget {
 }
 
 // Three-service routing matrix: [complexity][worst_quota_level]
-// Z.AI is the cost-efficient middle ground — cheaper than Claude, more capable than codex-mini
+// Zhipu AI is the cost-efficient middle ground — cheaper than Claude, more capable than codex-mini
 const ROUTING_MATRIX: Record<Complexity, Record<QuotaLevel, RouteTarget>> = {
   trivial: {
     high:     { service: "zai", tier: "budget" },    // glm-4.5-air — cheapest option
@@ -87,7 +87,7 @@ function findBestModel(service: ServiceType, tier: ModelDef["tier"]): ModelDef |
 }
 
 function pickFallback(primaryService: ServiceType): { service: ServiceType; model: ModelDef | undefined } {
-  // Fallback priority: Z.AI (cheapest) > Codex > Claude
+  // Fallback priority: Zhipu AI (cheapest) > Codex > Claude
   const fallbackOrder: ServiceType[] = ["zai", "codex", "claude"];
   for (const service of fallbackOrder) {
     if (service === primaryService) continue;
@@ -110,7 +110,7 @@ export async function routeTask(
   const zaiLevel = getQuotaLevel(zaiQuota?.percent_5h ?? 0);
 
   // Use the worst non-ZAI quota level for the routing matrix
-  // (since Z.AI is the overflow destination)
+  // (since Zhipu AI is the overflow destination)
   const worstMainLevel = codexLevel === "critical" || claudeLevel === "critical"
     ? "critical"
     : codexLevel === "low" || claudeLevel === "low"
@@ -123,13 +123,13 @@ export async function routeTask(
 
   // Service-specific overrides based on actual quotas
   if (preferred.service === "claude" && claudeLevel === "critical") {
-    // Claude exhausted — fall to Z.AI
+    // Claude exhausted — fall to Zhipu AI
     preferred = { service: "zai", tier: preferred.tier };
   } else if (preferred.service === "codex" && codexLevel === "critical") {
-    // Codex exhausted — fall to Z.AI
+    // Codex exhausted — fall to Zhipu AI
     preferred = { service: "zai", tier: preferred.tier };
   } else if (preferred.service === "zai" && zaiLevel === "critical") {
-    // Z.AI exhausted — try Codex for budget, Claude for premium
+    // Zhipu AI exhausted — try Codex for budget, Claude for premium
     if (preferred.tier === "budget" || preferred.tier === "mid") {
       preferred = codexLevel !== "critical"
         ? { service: "codex", tier: "budget" }
@@ -239,7 +239,7 @@ function buildReasoning(
   const parts: string[] = [];
 
   parts.push(`Task: ${classification.complexity} (${classification.category})`);
-  parts.push(`Quotas — Codex: ${codexLevel}, Claude: ${claudeLevel}, Z.AI: ${zaiLevel}`);
+  parts.push(`Quotas — Codex: ${codexLevel}, Claude: ${claudeLevel}, Zhipu AI: ${zaiLevel}`);
   parts.push(`Composite score: ${classification.signals.composite.toFixed(3)}`);
 
   if (model) {
@@ -262,7 +262,7 @@ function buildReasoning(
   }
 
   if (preferred.service === "zai") {
-    parts.push("Routed to Z.AI for cost efficiency");
+    parts.push("Routed to Zhipu AI for cost efficiency");
   }
 
   return parts.join(". ");
