@@ -414,7 +414,11 @@ async function autoSplitTask(task: string): Promise<SubtaskInput[] | null> {
     const parsed = JSON.parse(jsonStr) as Array<{ id: string; prompt: string }>;
     if (!Array.isArray(parsed) || parsed.length < 2 || parsed.length > 10) return null;
 
-    return parsed.map((p) => ({
+    // Validate each subtask has a non-empty prompt
+    const valid = parsed.filter((p) => typeof p.prompt === "string" && p.prompt.trim().length > 0);
+    if (valid.length < 2) return null;
+
+    return valid.map((p) => ({
       id: p.id ?? `subtask-${Math.random().toString(36).slice(2, 6)}`,
       prompt: p.prompt,
     }));
@@ -580,12 +584,34 @@ export async function parallelDelegate(
     applySpreadStrategy(assignments);
   } else if (strategy === "cheapest") {
     for (const a of assignments) {
-      if ((a.complexity === "trivial" || a.complexity === "simple") && a.service !== "zai") {
+      // Don't override opencode — free models are already the cheapest
+      if ((a.complexity === "trivial" || a.complexity === "simple") && a.service !== "zai" && a.service !== "opencode") {
         a.service = "zai";
         a.model = a.complexity === "trivial" ? "glm-4.5-air" : "glm-4.7";
         a.reasoning += " [Cheapest strategy: routed to Z.AI]";
       }
     }
+  }
+
+  // Check for duplicate subtask IDs
+  const idCounts = new Map<string, number>();
+  for (const s of subtasks) {
+    idCounts.set(s.id, (idCounts.get(s.id) ?? 0) + 1);
+  }
+  const duplicates = [...idCounts.entries()].filter(([, c]) => c > 1).map(([id]) => id);
+  if (duplicates.length > 0) {
+    return {
+      overall_success: false,
+      completed: 0, failed: 1, total: subtasks.length,
+      total_estimated_tokens: 0,
+      subtask_results: [{
+        id: "validation", success: false, output: "",
+        error: `Duplicate subtask IDs: ${duplicates.join(", ")}. Each subtask must have a unique ID.`,
+        model_used: "", service_used: "", estimated_tokens: 0,
+        complexity: "unknown", routing_reasoning: "", used_fallback: false, duration_ms: 0,
+      }],
+      auto_split_used: autoSplitUsed,
+    };
   }
 
   // Build execution DAG from dependsOn fields

@@ -1,4 +1,3 @@
-// Subprocess imports used in Task 3 (discovery functions)
 import { commandExists, runCommand } from "../utils/subprocess.js";
 
 export interface DiscoveredFreeModel {
