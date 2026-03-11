@@ -413,6 +413,16 @@ server.registerTool(
     lines.push(`  Ollama (local LLM): ${tools.ollama ? "YES" : "NO"}`);
     lines.push(`  Distill (semantic compressor): ${tools.distill ? "YES" : "NO"}`);
 
+    // Show free model availability (grouped with tool statuses above)
+    const freeModels = await discoverFreeModels();
+    if (freeModels.length > 0) {
+      lines.push(`  Free models (OpenCode): ${freeModels.length} available (best: ${freeModels[0].model})`);
+    } else if (tools.opencode) {
+      lines.push(`  Free models (OpenCode): none detected`);
+    } else {
+      lines.push(`  Free models (OpenCode): N/A (OpenCode not installed)`);
+    }
+
     if (!tools.opencode) {
       lines.push("\nRECOMMENDED: Install OpenCode for Z.AI delegation (brew install anomalyco/tap/opencode)");
     }
@@ -427,16 +437,6 @@ server.registerTool(
     }
     if (!tools.distill) {
       lines.push("RECOMMENDED: Install Distill (npm i -g @samuelfaj/distill) for 95-99% token savings on CLI output");
-    }
-
-    // Show free model availability
-    const freeModels = await discoverFreeModels();
-    if (freeModels.length > 0) {
-      lines.push(`  Free models (OpenCode): ${freeModels.length} available (best: ${freeModels[0].model})`);
-    } else if (tools.opencode) {
-      lines.push(`  Free models (OpenCode): none detected`);
-    } else {
-      lines.push(`  Free models (OpenCode): N/A (OpenCode not installed)`);
     }
 
     return {

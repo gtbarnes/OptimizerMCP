@@ -21,7 +21,7 @@ export function invalidateFreeModelCache(): void {
 
 // ── Name-based heuristic ranking ─────────────────────────────────────
 
-const BUDGET_PENALTIES = /nano|mini|flash|tiny|small|lite/i;
+const BUDGET_PENALTIES = /nano|mini(?!max)|flash|tiny|small|lite/i;
 const FREE_SUFFIX = /-free$/i;
 const RECOGNIZED_PREFIXES = /^(gpt|glm|mimo|minimax|claude|llama|qwen|gemma|deepseek)/i;
 const VERSION_PATTERN = /(\d+(?:\.\d+)?)/;
@@ -57,9 +57,12 @@ function rankModel(name: string): number {
  *   big-pickle           opencode    128000   16384
  *
  * Skips header lines. Extracts model name (col 0) and provider (col 1).
+ * Strips ANSI escape codes that some CLIs inject for colored output.
  */
 function parseModelsOutput(stdout: string): DiscoveredFreeModel[] {
-  const lines = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+  // Strip ANSI escape codes before parsing
+  const cleaned = stdout.replace(/\x1B\[[0-9;]*m/g, "");
+  const lines = cleaned.split("\n").map((l) => l.trim()).filter(Boolean);
   const models: DiscoveredFreeModel[] = [];
 
   for (const line of lines) {
@@ -89,8 +92,8 @@ function parseModelsOutput(stdout: string): DiscoveredFreeModel[] {
 
 /**
  * Discover free models available in OpenCode's marketplace.
- * Checks `commandExists("opencode")` fresh each call (not cached).
- * Model list is cached for 5 minutes.
+ * Results (including "no models found") are cached for 5 minutes.
+ * Both commandExists and model discovery are re-run on cache expiry.
  */
 export async function discoverFreeModels(): Promise<DiscoveredFreeModel[]> {
   // Return cached result if fresh

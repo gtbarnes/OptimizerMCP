@@ -15,6 +15,22 @@ export interface QuotaReport {
 }
 
 export async function checkQuota(service?: string): Promise<QuotaReport> {
+  // OpenCode free models have no quota — return immediately with helpful info
+  if (service === "opencode") {
+    const freeModel = await getBestFreeModel();
+    return {
+      statuses: [],
+      summary: "OpenCode free models have no quota limits.",
+      should_use_opus: false,
+      should_use_flagship: false,
+      budget_advice: freeModel
+        ? `Free models available via OpenCode — no quota limits apply. Best model: ${freeModel.model}. ` +
+          `Use target_service: "opencode" with target_model: "${freeModel.qualifiedName}" to delegate.`
+        : "No free models currently detected. Install OpenCode (brew install anomalyco/tap/opencode) " +
+          "and ensure free models are available in the marketplace.",
+    };
+  }
+
   const allStatuses = getQuotaStatus();
   const statuses = service
     ? allStatuses.filter((s) => s.service === service)
