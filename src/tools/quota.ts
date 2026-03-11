@@ -47,7 +47,8 @@ export async function checkQuota(service?: string): Promise<QuotaReport> {
   const codexPercent = codexStatus?.percent_5h ?? 0;
   const zaiPercent = zaiStatus?.percent_5h ?? 0;
 
-  const should_use_opus = claudePercent < 30;
+  // Opus always requires user confirmation — never auto-recommend
+  const should_use_opus = false;
   const should_use_flagship = codexPercent < 40 || claudePercent < 40;
 
   // Token usage for extra context

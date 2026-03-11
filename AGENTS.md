@@ -17,6 +17,7 @@ Even then, prefer `parallel_delegate` for anything with 2+ parts. Your tokens co
 3. **DO NOT skip compression.** All CLI output and code blocks go through `optimize_context` before you process them.
 4. **DO NOT narrate your process.** Classify → route → delegate → return result. Do not explain each step to the user unless asked. Minimize your own output tokens.
 5. **NEVER ignore routing.** If `recommend_model` says Claude or Z.AI, you MUST delegate. Period.
+6. **NEVER use Opus without user confirmation.** See "Opus Confirmation Gate" below. This is non-negotiable.
 
 ## Workflow
 
@@ -100,9 +101,28 @@ If you are spending 1000+ tokens on a task, ask yourself: "Could I have delegate
 | Trivial | Z.AI glm-4.5-air | Codex |
 | Simple | Z.AI glm-4.7 | Codex |
 | Moderate | Claude sonnet | Z.AI glm-4.7 |
-| Complex | Claude opus | Z.AI glm-5 |
+| Complex | Claude sonnet (opus needs confirmation) | Z.AI glm-5 |
 | UI/Visual | Claude (always) | Claude |
 | Quota critical (2+ services) | Free model (auto) | Original route |
+
+## Opus Confirmation Gate
+
+**Opus models are NEVER auto-delegated.** They consume ~4.5x more quota than sonnet (10 messages/5h vs 45) and burn through tokens extremely fast.
+
+**How it works:**
+- `recommend_model` will NEVER return an opus model as `recommended_model`
+- Instead it returns sonnet + `requires_confirmation: true` + `premium_model: "claude-opus-4-6"`
+- `check_quota` will always return `should_use_opus: false`
+
+**When you see `requires_confirmation: true`:**
+1. **STOP.** Do not delegate yet.
+2. Ask the user: the `confirmation_reason` field has a ready-made prompt.
+3. If user says YES → use `delegate_task` with the `premium_model` value.
+4. If user says NO (or doesn't answer) → proceed with the recommended sonnet model.
+
+**There are NO exceptions.** Even if the task is architectural, even if quotas are full, even if the user's last message sounds urgent. Always ask first.
+
+**In `parallel_delegate`:** Subtasks that would need opus are automatically downgraded to sonnet. There is no confirmation flow in parallel mode — opus is simply never used there.
 
 ## Free Model Fallback
 
@@ -135,6 +155,7 @@ When 2+ of the 3 paid services (Claude, Codex, Z.AI) hit critical quota levels (
 - ❌ Processing raw CLI output without `optimize_context`
 - ❌ Using `delegate_task` without `fallback_model`/`fallback_service`
 - ❌ Working locally on moderate/complex tasks when Z.AI or Claude could handle them
+- ❌ **Delegating to opus without asking the user first** (10 msgs/5h — each one is precious)
 
 ## Tool Reference
 

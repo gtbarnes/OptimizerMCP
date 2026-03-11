@@ -10,6 +10,12 @@ export interface RoutingDecision {
   fallback_model: string;
   fallback_service: ServiceType;
   cost_tier: string;
+  /** When true, Codex MUST ask the user before delegating (e.g. opus). */
+  requires_confirmation: boolean;
+  /** Reason confirmation is needed (shown to user). */
+  confirmation_reason?: string;
+  /** The premium model that requires confirmation. Use this if user approves. */
+  premium_model?: string;
 }
 
 type QuotaLevel = "high" | "moderate" | "low" | "critical";
@@ -187,6 +193,27 @@ export async function routeTask(
       fallback_model: primaryModel?.id ?? "glm-4.7",
       fallback_service: preferred.service,
       cost_tier: "budget",
+      requires_confirmation: false,
+    };
+  }
+
+  // ── Opus gate: NEVER auto-delegate to opus without user confirmation ──
+  // Opus consumes ~4.5x more quota than sonnet (10 msgs/5h vs 45).
+  // Downgrade to sonnet as default; keep opus as premium_model for manual upgrade.
+  const isOpus = primaryModel?.id?.toLowerCase().includes("opus") ?? false;
+  if (isOpus) {
+    const sonnet = findBestModel("claude", "mid");
+    return {
+      recommended_model: sonnet?.id ?? "claude-sonnet-4-6",
+      recommended_service: "claude",
+      reasoning: reasoning + ". OPUS DOWNGRADED → sonnet (opus requires user confirmation)",
+      fallback_model: fallback.model?.id ?? "glm-4.5-air",
+      fallback_service: fallback.service,
+      cost_tier: "mid",
+      requires_confirmation: true,
+      confirmation_reason: `Opus (${primaryModel!.id}) is ideal for this task but consumes ~4.5x more quota than sonnet. ` +
+        `Ask user: "This looks like a ${classification.complexity} task — want me to use opus for better quality, or stick with sonnet?"`,
+      premium_model: primaryModel!.id,
     };
   }
 
@@ -197,6 +224,7 @@ export async function routeTask(
     fallback_model: fallback.model?.id ?? "glm-4.5-air",
     fallback_service: fallback.service,
     cost_tier: preferred.tier,
+    requires_confirmation: false,
   };
 }
 
