@@ -233,7 +233,7 @@ server.registerTool(
       fallbackModel: fallback_model,
       fallbackService: normalizedFallback,
       onProgress: (message) => {
-        server.sendLoggingMessage({ level: "info", logger: "optimizer-mcp", data: message });
+        server.sendLoggingMessage({ level: "info", logger: "optimizer-mcp", data: message }).catch(() => {});
       },
     });
 
@@ -548,7 +548,7 @@ server.registerTool(
               .min(1)
               .max(600)
               .optional()
-              .describe("Per-subtask timeout in seconds, 1-600 (default: 240)"),
+              .describe("Per-subtask activity timeout: seconds of silence before killing, 1-600 (default: 60). 10-minute hard cap applies."),
             depends_on: z
               .array(z.string())
               .optional()
@@ -590,7 +590,7 @@ server.registerTool(
       strategy: strategy ?? "spread",
       globalTimeoutMs: (global_timeout_seconds ?? 300) * 1000,
       onProgress: (message) => {
-        server.sendLoggingMessage({ level: "info", logger: "optimizer-mcp", data: message });
+        server.sendLoggingMessage({ level: "info", logger: "optimizer-mcp", data: message }).catch(() => {});
       },
     });
 

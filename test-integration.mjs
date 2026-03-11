@@ -287,6 +287,65 @@ async function runTests() {
     assert(data.recommended_service === "claude", "UI task routed to Claude", `got: ${data.recommended_service}`);
   }
 
+  // ── Test 15: delegate_task emits logging messages ──────────────────
+  console.log("\n15. delegate_task progress notifications (logging messages)");
+  {
+    // Collect any JSON-RPC notifications emitted during delegation
+    const notifications = [];
+    const origHandler = server._onNotification;
+
+    const res = await server.send("tools/call", {
+      name: "delegate_task",
+      arguments: {
+        prompt: "Reply with exactly: PROGRESS_TEST_OK",
+        target_model: "glm-4.5-air",
+        target_service: "zai",
+        timeout_seconds: 45,
+      },
+    }, 60000);
+
+    // Verify the delegation itself works
+    assert(!res.error, "Delegation with progress succeeded", JSON.stringify(res.error));
+    const text = typeof getContent(res) === "string" ? getContent(res) : JSON.stringify(getContent(res));
+    assert(text.includes("Delegated to"), "Delegation header present with progress enabled", text.slice(0, 150));
+
+    // Check server stderr for progress-related logs (the sendLoggingMessage calls)
+    const stderr = server.getStderr();
+    const hasProgressLogs = stderr.includes("Delegating to") || stderr.includes("OptimizerMCP");
+    assert(hasProgressLogs, "Server emits progress logs during delegation");
+  }
+
+  // ── Test 16: delegate_task with short timeout (activity timeout test) ─
+  console.log("\n16. delegate_task (activity timeout description updated)");
+  {
+    // Verify that the timeout_seconds schema describes activity timeout
+    const res = await server.send("tools/list", {});
+    const tools = res.result?.tools ?? [];
+    const delegateTool = tools.find(t => t.name === "delegate_task");
+    const timeoutProp = delegateTool?.inputSchema?.properties?.timeout_seconds;
+    const desc = timeoutProp?.description ?? "";
+    assert(desc.includes("Activity timeout") || desc.includes("silence"),
+      "timeout_seconds description reflects activity-based semantics",
+      `got: ${desc.slice(0, 80)}`);
+  }
+
+  // ── Test 17: parallel_delegate timeout description updated ──────────
+  console.log("\n17. parallel_delegate (subtask timeout description updated)");
+  {
+    const res = await server.send("tools/list", {});
+    const tools = res.result?.tools ?? [];
+    const parallelTool = tools.find(t => t.name === "parallel_delegate");
+    // Drill into the subtasks array schema for timeout_seconds
+    const subtaskSchema = parallelTool?.inputSchema?.properties?.subtasks;
+    const subtaskTimeoutDesc = subtaskSchema?.items?.properties?.timeout_seconds?.description ?? "";
+    assert(!subtaskTimeoutDesc.includes("default: 240"),
+      "parallel_delegate subtask timeout no longer says 240",
+      `got: ${subtaskTimeoutDesc.slice(0, 80)}`);
+    assert(subtaskTimeoutDesc.includes("60") || subtaskTimeoutDesc.includes("activity"),
+      "parallel_delegate subtask timeout reflects new default",
+      `got: ${subtaskTimeoutDesc.slice(0, 80)}`);
+  }
+
   // ── Summary ────────────────────────────────────────────────────────
   console.log(`\n${"═".repeat(50)}`);
   console.log(`Results: ${passed} passed, ${failed} failed, ${passed + failed} total`);

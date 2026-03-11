@@ -114,14 +114,14 @@ export async function runCommandStreaming(
       const text = chunk.toString();
       stdoutBuf += text;
       lastActivity = Date.now();
-      onOutput?.(text, "stdout");
+      try { onOutput?.(text, "stdout"); } catch { /* progress callback failure must not crash the server */ }
     });
 
     child.stderr.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       stderrBuf += text;
       lastActivity = Date.now();
-      onOutput?.(text, "stderr");
+      try { onOutput?.(text, "stderr"); } catch { /* progress callback failure must not crash the server */ }
     });
 
     child.on("close", (code) => {
