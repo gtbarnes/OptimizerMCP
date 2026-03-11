@@ -158,13 +158,15 @@ server.registerTool(
       "Call this to make informed decisions about model selection.",
     inputSchema: {
       service: z
-        .enum(["codex", "claude", "zai", "opencode"])
+        .enum(["codex", "claude", "zai", "zhipuai", "opencode"])
         .optional()
-        .describe("Filter to a specific service, or omit for all"),
+        .describe("Filter to a specific service, or omit for all (zhipuai = Z.AI)"),
     },
   },
   async ({ service }) => {
-    const report = await checkQuota(service);
+    // Normalize "zhipuai" to internal "zai"
+    const normalizedService = service === "zhipuai" ? "zai" : service;
+    const report = await checkQuota(normalizedService);
 
     return {
       content: [
@@ -328,7 +330,7 @@ server.registerTool(
       "Changes are persisted to config/models.json.",
     inputSchema: {
       model_id: z.string().describe("Model identifier (e.g., gpt-6, claude-5)"),
-      service: z.enum(["codex", "claude", "zai"]).describe("Which service provides this model"),
+      service: z.enum(["codex", "claude", "zai", "zhipuai"]).describe("Which service provides this model (zhipuai = Z.AI)"),
       tier: z
         .enum(["flagship", "high", "mid", "budget"])
         .describe("Cost/capability tier"),
@@ -346,6 +348,8 @@ server.registerTool(
     },
   },
   async ({ model_id, service, tier, capabilities, cost_weight, context_window }) => {
+    // Normalize "zhipuai" to internal "zai"
+    const normalizedService = service === "zhipuai" ? "zai" : service;
     const { readFileSync, writeFileSync } = await import("node:fs");
     const { join, dirname } = await import("node:path");
     const { fileURLToPath } = await import("node:url");
@@ -359,7 +363,7 @@ server.registerTool(
     );
     const newModel = {
       id: model_id,
-      service,
+      service: normalizedService,
       tier,
       capabilities,
       cost_weight,
@@ -382,7 +386,7 @@ server.registerTool(
         {
           type: "text" as const,
           text: `Model ${model_id} ${existing >= 0 ? "updated" : "added"} successfully. ` +
-            `Service: ${service}, Tier: ${tier}, Cost weight: ${cost_weight}`,
+            `Service: ${normalizedService}, Tier: ${tier}, Cost weight: ${cost_weight}`,
         },
       ],
     };
@@ -462,7 +466,7 @@ server.registerTool(
       "Manually record a usage event for tracking purposes. " +
       "Use after completing a task to keep quota estimates accurate.",
     inputSchema: {
-      service: z.enum(["codex", "claude", "zai", "opencode"]).describe("Which service was used"),
+      service: z.enum(["codex", "claude", "zai", "zhipuai", "opencode"]).describe("Which service was used (zhipuai = Z.AI)"),
       model: z.string().describe("Model ID that was used"),
       estimated_input_tokens: z
         .number()
@@ -479,8 +483,10 @@ server.registerTool(
     },
   },
   async ({ service, model, estimated_input_tokens, estimated_output_tokens, task_complexity }) => {
+    // Normalize "zhipuai" to internal "zai"
+    const normalizedService = (service === "zhipuai" ? "zai" : service) as "codex" | "claude" | "zai" | "opencode";
     recordUsage({
-      service,
+      service: normalizedService,
       model,
       estimated_input_tokens: estimated_input_tokens ?? 1000,
       estimated_output_tokens: estimated_output_tokens ?? 500,
@@ -491,7 +497,7 @@ server.registerTool(
       content: [
         {
           type: "text" as const,
-          text: `Usage recorded: ${service}/${model}`,
+          text: `Usage recorded: ${normalizedService}/${model}`,
         },
       ],
     };
